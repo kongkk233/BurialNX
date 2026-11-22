@@ -73,8 +73,12 @@
 >
 > Reads check the overlay first (files the game wrote), then the real SD
 > path under the app root. Writes always go to the overlay, so the game's
-> own files are never modified. Paths are validated and clamped to the app
-> root + overlay subtrees: a crafted `..` path is rejected.
+> own files are never modified. `renameSync`/`rename` move only files already
+> present in the overlay; packaged app files are immutable through this shim.
+> Overlay rename requires the native `Switch.renameSync` operation, otherwise
+> it fails with `ENOSYS` instead of pretending a copy-and-delete is atomic.
+> Paths are validated and clamped to the app root + overlay subtrees: a
+> crafted `..` path is rejected.
 
 ### `makeFs` — `mem` map trailing inline
 > in-memory overlay when no switchFs (tests)
@@ -100,6 +104,12 @@
 
 ### `makeFs.writeFileSync` — mkdir trailing catch
 > best-effort
+
+### `makeFs.renameSync` — overlay-only atomic replacement
+> Resolve both paths through the app-root boundary, require the source to
+> exist in the writable overlay, and delegate to native `Switch.renameSync`.
+> A packaged source file is rejected rather than copied over, and a runtime
+> without native rename reports `ENOSYS` rather than claiming atomicity.
 
 ### `makeFs.appendFileSync` — read-prev trailing catch
 > new file

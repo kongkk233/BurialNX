@@ -4,23 +4,25 @@ import { installNodeCompat, resolveFsPath, appRootFrom, overlayBaseFor, type Swi
 
 // An in-memory fake of nx.js's synchronous `Switch` fs, used to verify the
 // fs polyfill maps reads/writes correctly and never touches the game dir.
-function fakeSwitch(realFiles: Record<string, string | ArrayBuffer> = {}): SwitchFs & { written: Record<string, ArrayBuffer>; removed: string[]; dirs: string[] } {
+function fakeSwitch(realFiles: Record<string, string | ArrayBuffer> = {}): SwitchFs & { written: Record<string, ArrayBuffer>; removed: string[]; renamed: Array<[string, string]>; dirs: string[] } {
         const store = new Map<string, ArrayBuffer>();
         for (const [k, v] of Object.entries(realFiles)) store.set(k, typeof v === 'string' ? new TextEncoder().encode(v).buffer : v);
         const written: Record<string, ArrayBuffer> = {};
         const removed: string[] = [];
+        const renamed: Array<[string, string]> = [];
         const dirs: string[] = [];
         const stat = (p: string) => store.has(p) ? { mode: 0o100000 } : (dirs.includes(p) ? { mode: 0o040000 } : null);
         return {
                 readFileSync: (p) => store.get(p) ?? null,
                 writeFileSync: (p, v) => { const buf = typeof v === 'string' ? new TextEncoder().encode(v).buffer : v; store.set(p, buf); written[p] = buf; },
+                renameSync: (from, to) => { if (!store.has(from)) throw new Error('missing source'); store.set(to, store.get(from)!); store.delete(from); renamed.push([from, to]); },
                 removeSync: (p) => { store.delete(p); removed.push(p); },
                 mkdirSync: (p) => { if (!dirs.includes(p)) dirs.push(p); },
                 statSync: stat,
                 readDirSync: (p) => [...store.keys(), ...dirs].filter((k) => k.startsWith(p + '/')).map((k) => k.slice(p.length + 1).split('/')[0]).filter((v, i, a) => v && a.indexOf(v) === i),
                 readFile: async (p) => store.get(p) ?? null,
                 appendFileSync: (p, v) => { const prev = store.get(p); const buf = typeof v === 'string' ? new TextEncoder().encode(v).buffer : v; const merged = prev ? merge(prev, buf) : buf; store.set(p, merged); written[p] = merged; },
-                written, removed, dirs,
+                written, removed, renamed, dirs,
         } as any;
 }
 function merge(a: ArrayBuffer, b: ArrayBuffer): ArrayBuffer { const out = new Uint8Array(a.byteLength + b.byteLength); out.set(new Uint8Array(a), 0); out.set(new Uint8Array(b), a.byteLength); return out.buffer; }
@@ -136,6 +138,40 @@ test('require("fs") unlink removes only the overlay copy', () => {
         // Overlay copy gone → falls back to the real file again.
         assert.equal(fs.readFileSync('cfg.json', 'utf8'), '{"v":1}');
         assert.deepEqual(sw.removed, [`${overlayBaseFor(GAME)}/cfg.json`]);
+});
+
+test('require("fs") renames only overlay files and preserves atomic native semantics', async () => {
+        const sw = fakeSwitch();
+        const r = fresh(sw);
+        const fs = r.require('fs');
+        fs.writeFileSync('result.json.part', '{"ok":true}');
+        fs.renameSync('result.json.part', 'result.json');
+        assert.equal(fs.readFileSync('result.json', 'utf8'), '{"ok":true}');
+        assert.throws(() => fs.readFileSync('result.json.part'), /ENOENT/);
+        assert.deepEqual(sw.renamed, [[`${overlayBaseFor(GAME)}/result.json.part`, `${overlayBaseFor(GAME)}/result.json`]]);
+        assert.ok(!sw.written[`${APPROOT}/result.json`], 'rename did not touch the packaged app root');
+        await renameAsync(fs, 'result.json', 'result-2.json');
+        assert.equal(fs.readFileSync('result-2.json', 'utf8'), '{"ok":true}');
+});
+
+function renameAsync(fs: any, from: string, to: string): Promise<void> {
+        return new Promise((resolve, reject) => fs.rename(from, to, (error: Error | null) => error ? reject(error) : resolve()));
+}
+
+test('require("fs") refuses to rename packaged files or claim atomicity without native rename', () => {
+        const sw = fakeSwitch({ [`${APPROOT}/orig.json`]: '{"orig":true}' });
+        const r = fresh(sw);
+        const fs = r.require('fs');
+        assert.throws(() => fs.renameSync('orig.json', 'moved.json'), /EPERM/);
+        assert.equal(fs.readFileSync('orig.json', 'utf8'), '{"orig":true}');
+
+        const noRename = fakeSwitch();
+        delete (noRename as any).renameSync;
+        const noRenameRuntime = fresh(noRename);
+        const noRenameFs = noRenameRuntime.require('fs');
+        noRenameFs.writeFileSync('pending.part', 'x');
+        assert.throws(() => noRenameFs.renameSync('pending.part', 'final.json'), /ENOSYS/);
+        assert.equal(noRenameFs.readFileSync('pending.part', 'utf8'), 'x');
 });
 
 test('require("fs") rejects relative traversal and absolute SD paths outside the app root', () => {

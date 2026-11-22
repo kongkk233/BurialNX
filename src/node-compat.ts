@@ -6,6 +6,7 @@ import { libraryIdFromRoot } from './game-library';
 export interface SwitchFs {
         readFileSync(path: string): ArrayBuffer | null;
         writeFileSync(path: string, value: string | ArrayBuffer): void;
+        renameSync?(from: string, to: string): void;
         removeSync?(path: string): void;
         unlinkSync?(path: string): void;
         mkdirSync?(path: string): void;
@@ -430,6 +431,35 @@ function makeFs(switchFs: SwitchFs | null, opts: NodeCompatOptions) {
                         try { const dir = pathDirname(overlay.replace(/^sdmc:\//i, '')); if (dir) switchFs.mkdirSync?.(`sdmc:/${dir}`); } catch {}
                         switchFs.writeFileSync(overlay, buf);
                 },
+                renameSync(from: string, to: string): void {
+                        const source = resolve(from);
+                        const target = resolve(to);
+                        const sourceOverlay = overlayPathFor(source);
+                        const targetOverlay = overlayPathFor(target);
+                        if (!sourceOverlay || !targetOverlay) { const e: any = new Error(`EPERM: path outside app root '${from}' or '${to}'`); e.code = 'EPERM'; throw e; }
+                        if (!switchFs) {
+                                const buf = mem.get(source);
+                                if (!buf) { const e: any = new Error(`ENOENT: no such file or directory, rename '${from}'`); e.code = 'ENOENT'; throw e; }
+                                mem.set(target, buf);
+                                mem.delete(source);
+                                return;
+                        }
+                        ensureOverlay();
+                        let sourceStat: { mode: number } | null = null;
+                        try { sourceStat = switchFs.statSync(sourceOverlay); } catch { sourceStat = null; }
+                        if (!sourceStat) {
+                                let packaged = false;
+                                try { packaged = switchFs.statSync(source) !== null; } catch { packaged = false; }
+                                const e: any = new Error(packaged
+                                        ? `EPERM: cannot rename packaged app file '${from}'`
+                                        : `ENOENT: no such file or directory, rename '${from}'`);
+                                e.code = packaged ? 'EPERM' : 'ENOENT';
+                                throw e;
+                        }
+                        if ((sourceStat.mode & 0o170000) !== S_IFREG) { const e: any = new Error(`EISDIR: illegal operation on a directory, rename '${from}'`); e.code = 'EISDIR'; throw e; }
+                        if (typeof switchFs.renameSync !== 'function') { const e: any = new Error('ENOSYS: Switch.renameSync is unavailable; refusing non-atomic overlay rename'); e.code = 'ENOSYS'; throw e; }
+                        switchFs.renameSync(sourceOverlay, targetOverlay);
+                },
                 appendFileSync(path: string, data: string | ArrayBuffer): void {
                         let prev = '';
                         try { prev = this.readFileSync(path, 'utf8') as string; } catch {}
@@ -468,6 +498,7 @@ function makeFs(switchFs: SwitchFs | null, opts: NodeCompatOptions) {
                         try { this.writeFileSync(path, data); nextMicrotask(() => cb?.(null)); }
                         catch (err) { nextMicrotask(() => cb?.(err as Error)); }
                 },
+                rename(from: string, to: string, callback: (err: Error | null) => void): void { try { this.renameSync(from, to); nextMicrotask(() => callback(null)); } catch (err) { nextMicrotask(() => callback(err as Error)); } },
                 stat(path: string, callback: (err: Error | null, stats?: any) => void): void { try { const s = this.statSync(path); nextMicrotask(() => callback(null, s)); } catch (err) { nextMicrotask(() => callback(err as Error)); } },
                 mkdir(path: string, options: any, callback?: (err: Error | null) => void): void { const cb = typeof options === 'function' ? options : callback; try { this.mkdirSync(path); nextMicrotask(() => cb?.(null)); } catch (err) { nextMicrotask(() => cb?.(err as Error)); } },
                 unlink(path: string, callback: (err: Error | null) => void): void { try { this.unlinkSync(path); nextMicrotask(() => callback(null)); } catch (err) { nextMicrotask(() => callback(err as Error)); } },
@@ -475,6 +506,7 @@ function makeFs(switchFs: SwitchFs | null, opts: NodeCompatOptions) {
                 promises: {
                         readFile: async (path: string, options?: any) => fs.readFileSync(path, options),
                         writeFile: async (path: string, data: any) => { fs.writeFileSync(path, data); },
+                        rename: async (from: string, to: string) => { fs.renameSync(from, to); },
                         stat: async (path: string) => fs.statSync(path),
                         mkdir: async (path: string) => { fs.mkdirSync(path); },
                         unlink: async (path: string) => { fs.unlinkSync(path); },
