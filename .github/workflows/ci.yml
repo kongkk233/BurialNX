@@ -183,3 +183,13 @@ jobs:
         env:
           BURIALNX_REUSE_BROWSER_REPORT: '1'
         run: npm run verify:release
+      - name: Print release evidence summary
+        run: |
+          node -e "const m=JSON.parse(require('fs').readFileSync('release-manifest.json')); console.log(JSON.stringify({gitCommit:m.gitCommit,nativeRebuild:{status:m.nativeRebuild.status,projectCommit:m.nativeRebuild.projectCommit,expectedExecutableSha256:m.nativeRebuild.expectedExecutableSha256,rebuiltExecutableSha256:m.nativeRebuild.rebuiltExecutableSha256},validationNative:m.validation.native},null,2))"
+      - name: Upload release validation evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-validation-evidence
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 7
