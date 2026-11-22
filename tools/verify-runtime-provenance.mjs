@@ -4,9 +4,14 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const SHA256 = /^[a-f0-9]{64}$/i;
+const SHA1 = /^[a-f0-9]{40}$/i;
 
 function digest(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+function gitBlobDigest(bytes) {
+  return createHash('sha1').update(`blob ${bytes.byteLength}\0`).update(bytes).digest('hex');
 }
 
 function inside(root, candidate) {
@@ -26,6 +31,31 @@ function projectPath(project, value, label) {
 
 function relativeProjectPath(project, candidate) {
   return relative(resolve(project), candidate).split(sep).join('/');
+}
+
+async function verifyGitBlobClaim({ project, claim, pathValue, expectedSha1 }) {
+  if (!SHA1.test(String(expectedSha1 ?? ''))) {
+    throw new Error(`${claim} has an invalid expected Git blob SHA-1`);
+  }
+  const candidate = projectPath(project, pathValue, `${claim} path`);
+  let bytes;
+  try {
+    bytes = await readFile(candidate);
+  } catch (error) {
+    if (error?.code === 'ENOENT') throw new Error(`${claim} file is missing: ${pathValue}`);
+    throw error;
+  }
+  const actualSha1 = gitBlobDigest(bytes);
+  const result = {
+    claim,
+    path: relativeProjectPath(project, candidate),
+    expectedSha1: String(expectedSha1).toLowerCase(),
+    actualSha1,
+    bytes: bytes.byteLength,
+    status: actualSha1 === String(expectedSha1).toLowerCase() ? 'pass' : 'fail',
+  };
+  if (result.status !== 'pass') throw new Error(`${claim} mismatch: ${actualSha1} != ${result.expectedSha1}`);
+  return result;
 }
 
 async function verifyFileClaim({ project, claim, pathValue, expectedSha256 }) {
@@ -69,6 +99,19 @@ export async function verifyRuntimeProvenance({ project = resolve('.'), manifest
   const root = resolve(project);
   const runtimeManifest = manifest ?? JSON.parse(await readFile(projectPath(root, manifestPath), 'utf8'));
   if (runtimeManifest.schema !== 1) throw new Error('runtime manifest schema must be 1');
+  const distributed = runtimeManifest.distributedArtifactProvenance;
+  if (!distributed || typeof distributed !== 'object' || Array.isArray(distributed)) {
+    throw new Error('runtime distributed artifact provenance is missing');
+  }
+  if (typeof distributed.repository !== 'string' || !/^https:\/\//.test(distributed.repository)) {
+    throw new Error('runtime distributed artifact provenance repository is invalid');
+  }
+  if (typeof distributed.commit !== 'string' || !/^[a-f0-9]{40}$/i.test(distributed.commit)) {
+    throw new Error('runtime distributed artifact provenance commit is invalid');
+  }
+  if (distributed.sourceCommitRole !== 'historical-distribution-commit' || distributed.exactRebuildStatus !== 'not-verified') {
+    throw new Error('runtime distributed artifact provenance boundary is invalid');
+  }
   const verified = [
     await verifyFileClaim({
       project: root,
@@ -88,9 +131,20 @@ export async function verifyRuntimeProvenance({ project = resolve('.'), manifest
       pathValue: 'runtime/nxjs-preroll.nro-code.gz',
       expectedSha256: runtimeManifest.prerollGzipSha256,
     }),
+    await verifyGitBlobClaim({
+      project: root,
+      claim: 'runtime.distributedArtifactGitBlobSha1',
+      pathValue: distributed.path,
+      expectedSha1: distributed.gitBlobSha1,
+    }),
   ];
 
   const unverified = [
+    unverifiedClaim(
+      'runtime.distributedArtifactSourceCommit',
+      { repository: distributed.repository, commit: distributed.commit, path: distributed.path },
+      'the historical distribution commit identifies the committed runtime blob, but it does not prove an exact source-to-runtime rebuild; retain native status as not-verified',
+    ),
     unverifiedClaim(
       'runtime.patchedSourceSha256',
       runtimeManifest.patchedSourceSha256 ?? null,

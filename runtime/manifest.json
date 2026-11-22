@@ -13,6 +13,14 @@
   "unpatchedLocalControlExe": "3ab5409949ad2629ebb2eef46b657a1e546520c22e1e7fb1cd5cfa156468debe",
   "fixedExeSha256": "d19416181cc10974ac8b44f902fb0232f032f78e38021f7dbce1dcc3c2834cb6",
   "prerollGzipSha256": "aed903bf861be6e7baaa9dda3522dfeda60b2c4646a7d7dc9557101247d92874",
+  "distributedArtifactProvenance": {
+    "repository": "https://github.com/ETCHDEV/BurialNX",
+    "commit": "201be25721f124a6f4512ac391a60ce41d921b85",
+    "path": "runtime/nxjs-preroll.nro-code.gz",
+    "gitBlobSha1": "d58651b6478db5ab4a90a2b8c3482b0efdc26102",
+    "sourceCommitRole": "historical-distribution-commit",
+    "exactRebuildStatus": "not-verified"
+  },
   "rawProgramBytes": 55603200,
   "standaloneRuntimeNroSha256": "c12f27fa3e1f36adbaa72b0866029fcb552495e13309f1f1491eb86baf557b61",
   "secondDirectoryStandaloneNroByteIdentical": true,

@@ -10,6 +10,16 @@ if(work===src || work.startsWith(src+path.sep) || src.startsWith(work+path.sep) 
 if([work,sdk].some(v=>/\s/.test(v)))throw Error('The devkitPro Makefiles need paths without spaces');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const safeCommand=(name,args,cwd)=>{try{return cmd(name,args,{cwd,encoding:'utf8'}).trim()||null;}catch{return null;}};
+const firstLine=value=>value?.split(/\r?\n/,1)[0]||null;
+const toolVersion=name=>firstLine(safeCommand(path.join(sdk,'devkitA64/bin',name),['--version'],root));
+const buildHost={
+  platform: process.platform,
+  arch: process.arch,
+  node: process.version,
+  make: firstLine(safeCommand('make',['--version'],root)),
+  gcc: toolVersion('aarch64-none-elf-gcc'),
+  binutils: toolVersion('aarch64-none-elf-ld'),
+};
 const projectCommit=process.env.BURIALNX_PROJECT_COMMIT||safeCommand('git',['-C',root,'rev-parse','HEAD']);
 const upstreamRevision=safeCommand('git',['-C',src,'rev-parse','HEAD'])||'a649611a1a4daca09924cd1a436c7ca786f91592';
 const reportPath=path.join(work,'native-rebuild-report.json');
@@ -35,6 +45,6 @@ cmd('make',args,{cwd:work,env:{...process.env,DEVKITPRO:sdk,PATH:[path.join(sdk,
 const raw=fs.readFileSync(path.join(work,'nxjs.nro')),n=raw.readUInt32LE(24),exe=raw.subarray(0,n);if(raw.toString('ascii',n,n+4)!=='ASET')throw Error('No ASET');
 const actual=hash(exe),rebuiltNroHash=hash(raw),elfPath=path.join(work,'nxjs.elf'),readelf=path.join(sdk,'devkitA64/bin/aarch64-none-elf-readelf'),buildId=(safeCommand(readelf,['-n',elfPath],work)||'').match(/Build ID:\s*([0-9a-f]+)/i)?.[1]||null;
 const status=actual===pinnedCode?'pass':'mismatch';
-writeReport({schema:1,tool:'rebuild-preroll-runtime',status,projectCommit,upstreamRevision,sourceArchiveSha256:process.env.BURIALNX_SOURCE_ARCHIVE_SHA256||null,sdkImage:process.env.BURIALNX_SDK_IMAGE||null,expectedExecutableSha256:pinnedCode,rebuiltExecutableSha256:actual,rawProgramBytes:n,rebuiltNroSha256:rebuiltNroHash,rebuiltNroBytes:raw.byteLength,nroBuildId:buildId,reason:status==='mismatch'?`rebuilt executable digest ${actual} does not match expected distributed digest ${pinnedCode}; fail closed and did not replace runtime/nxjs-preroll.nro-code.gz`:null});
+writeReport({schema:1,tool:'rebuild-preroll-runtime',status,projectCommit,upstreamRevision,sourceArchiveSha256:process.env.BURIALNX_SOURCE_ARCHIVE_SHA256||null,sdkImage:process.env.BURIALNX_SDK_IMAGE||null,buildHost,expectedExecutableSha256:pinnedCode,rebuiltExecutableSha256:actual,rawProgramBytes:n,rebuiltNroSha256:rebuiltNroHash,rebuiltNroBytes:raw.byteLength,nroBuildId:buildId,reason:status==='mismatch'?`rebuilt executable digest ${actual} does not match expected distributed digest ${pinnedCode}; fail closed and did not replace runtime/nxjs-preroll.nro-code.gz`:null});
 console.log('Built NRO executable SHA-256:',actual);if(status==='mismatch')throw Error('Different linker output: keep for inspection; NOT replacing the distributed build. Use the documented SDK and path maps.');
 write('nxjs-preroll.nro-code.gz',gzipSync(exe,{level:6}));console.log('Recreated verified executable; the project and upstream checkout were not overwritten.');
