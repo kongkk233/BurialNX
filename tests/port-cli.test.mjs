@@ -6,7 +6,8 @@ import { cp, chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'nod
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { acceptExternalRuntime, parseArgs, validateExternalRuntimeReport, versionMatches } from '../tools/accept-external-runtime.mjs';
-import { externalRuntimeNotRunReport, loadExternalRuntimeReport } from '../tools/release-manifest.mjs';
+import { externalRuntimeNotRunReport, inspectNroArtifact, loadExternalRuntimeReport, validateArtifactPath, validateArtifactSet } from '../tools/release-manifest.mjs';
+import { pinnedCode } from '../tools/check-video-runtime.mjs';
 import { acceptHost } from '../tools/accept-host.mjs';
 import { verifyRuntimeProvenance } from '../tools/verify-runtime-provenance.mjs';
 import { validateBrowserReport } from '../tools/browser-report.mjs';
@@ -21,6 +22,34 @@ const fixture = resolve('tests/fixtures/neutral-mv/www');
 const modFixture = resolve('tests/fixtures/neutral-mv/mod');
 const genericFixture = resolve('tests/fixtures/generic-mv/www');
 const genericModFixture = resolve('tests/fixtures/generic-mv/mod');
+
+function syntheticNro({ title = 'BurialNX', author = 'BurialNX contributors', id = '01a144e6a07a0000', startupUserAccount = 0, saveDataSize = 32768n, journalSize = 32768n, bcatSize = 0n } = {}) {
+  const nroSize = 0x1000;
+  const assetBase = nroSize;
+  const iconRel = 0x38;
+  const nacpRel = iconRel + 1;
+  const nacpSize = 0x4000;
+  const romfsRel = nacpRel + nacpSize;
+  const buffer = Buffer.alloc(assetBase + romfsRel + 1, 0);
+  buffer.write('NRO0', 0x10, 'ascii');
+  buffer.writeUInt32LE(nroSize, 0x18);
+  buffer.write('ASET', assetBase, 'ascii');
+  buffer.writeUInt32LE(iconRel, assetBase + 0x08);
+  buffer.writeUInt32LE(1, assetBase + 0x10);
+  buffer.writeUInt32LE(nacpRel, assetBase + 0x18);
+  buffer.writeUInt32LE(nacpSize, assetBase + 0x20);
+  buffer.writeUInt32LE(romfsRel, assetBase + 0x28);
+  buffer.writeUInt32LE(1, assetBase + 0x30);
+  const nacp = assetBase + nacpRel;
+  buffer.write(title, nacp, 'utf8');
+  buffer.write(author, nacp + 0x200, 'utf8');
+  buffer.writeBigUInt64LE(BigInt(`0x${id}`), nacp + 0x3038);
+  buffer.writeUInt8(startupUserAccount, nacp + 0x3025);
+  buffer.writeBigUInt64LE(saveDataSize, nacp + 0x3080);
+  buffer.writeBigUInt64LE(journalSize, nacp + 0x3088);
+  buffer.writeBigUInt64LE(bcatSize, nacp + 0x3090);
+  return buffer;
+}
 
 test('port checker validates the neutral fixture and records ordered scripts', async () => {
   const result = await checkPort({ gameRoot: fixture, modRoot: null, profile: null, manifest: null });
@@ -144,6 +173,57 @@ test('generic package runtime acceptance executes scripts without neutral marker
   assert.equal(result.evidence.neutralMarkerRequired, false);
   assert.equal(result.evidence.startup, 'scene-boot');
   assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);
+});
+
+test('release artifact attestation binds release and debug NRO identity without assuming code digests differ', () => {
+  const release = inspectNroArtifact(syntheticNro(), {
+    path: 'burialnx.nro',
+    kind: 'release',
+    expectedTitle: 'BurialNX',
+    expectedId: '01a144e6a07a0000',
+    expectedAuthor: 'BurialNX contributors',
+  });
+  const debugBuffer = syntheticNro({ title: 'BurialNX-Debug' });
+  const debug = inspectNroArtifact(debugBuffer, {
+    path: 'burialnx-debug.nro',
+    kind: 'debug',
+    expectedTitle: 'BurialNX-Debug',
+    expectedId: release.nacp.id,
+    expectedAuthor: release.nacp.author,
+  });
+  const artifacts = {
+    nro: release,
+    debugNro: debug,
+    runtimeExecutable: { sha256: release.executableSha256, expectedSha256: pinnedCode },
+  };
+  assert.equal(debug.executableSha256, release.executableSha256, 'same executable digest is allowed when only NACP differs');
+  assert.doesNotThrow(() => validateArtifactSet(artifacts, { requireDebugArtifact: true }));
+
+  debugBuffer[0x100] = 1;
+  const differentCodeDebug = inspectNroArtifact(debugBuffer, {
+    path: 'burialnx-debug.nro',
+    kind: 'debug',
+    expectedTitle: 'BurialNX-Debug',
+    expectedId: release.nacp.id,
+    expectedAuthor: release.nacp.author,
+  });
+  assert.notEqual(differentCodeDebug.executableSha256, release.executableSha256, 'different executable digest is also allowed');
+  assert.doesNotThrow(() => validateArtifactSet({ ...artifacts, debugNro: differentCodeDebug }, { requireDebugArtifact: true }));
+  assert.throws(() => validateArtifactSet({ ...artifacts, debugNro: { ...debug, sha256: 'not-a-digest' } }, { requireDebugArtifact: true }), /debugNro digest is invalid/);
+  assert.throws(() => validateArtifactSet({ ...artifacts, debugNro: { ...debug, path: '../burialnx-debug.nro' } }, { requireDebugArtifact: true }), /unsafe/);
+
+  assert.throws(() => validateArtifactPath('../burialnx-debug.nro'), /unsafe/);
+  assert.throws(() => validateArtifactPath('dir\\\\burialnx-debug.nro'), /unsafe/);
+  assert.throws(() => validateArtifactSet({ ...artifacts, debugNro: undefined }, { requireDebugArtifact: true }), /requires burialnx-debug/);
+  assert.throws(() => inspectNroArtifact(syntheticNro({ title: 'BurialNX-Debug', journalSize: 1n }), {
+    path: 'burialnx-debug.nro', kind: 'debug', expectedTitle: 'BurialNX-Debug', expectedId: release.nacp.id,
+  }), /journalSize policy mismatch/);
+  assert.throws(() => inspectNroArtifact(syntheticNro(), {
+    path: 'burialnx-debug.nro', kind: 'debug', expectedTitle: 'BurialNX-Debug', expectedId: release.nacp.id,
+  }), /title mismatch/);
+  assert.throws(() => inspectNroArtifact(syntheticNro({ id: '01a144e6a07a0001', title: 'BurialNX-Debug' }), {
+    path: 'burialnx-debug.nro', kind: 'debug', expectedTitle: 'BurialNX-Debug', expectedId: release.nacp.id,
+  }), /application id mismatch/);
 });
 
 test('external runtime acceptance stays not-verified without an explicit executable', async () => {

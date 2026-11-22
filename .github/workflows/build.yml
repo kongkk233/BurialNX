@@ -71,16 +71,19 @@ jobs:
       - name: Build release NRO from this checkout
         run: npm run build -- --default-icon
 
-      # This verifies the freshly built release NRO and remains explicitly host-only:
-      # browser is desktop Chromium; native/hardware validation is reported separately.
-      - name: Verify freshly built release
-        env:
-          CHROME_BIN: ${{ steps.chrome.outputs.path }}
-        run: npm run verify:release
-
-      # Build the debug artifact after the release manifest has been frozen.
+      # Build both publishable NROs before freezing the manifest. The release
+      # gate binds the debug artifact only in this explicit artifact-set mode.
       - name: Build debug NRO
         run: npm run build -- --debug
+
+      # This verifies the freshly built release/debug artifact set and remains
+      # explicitly host-only: browser is desktop Chromium; native/hardware
+      # validation is reported separately.
+      - name: Verify freshly built release artifact set
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.path }}
+          BURIALNX_REQUIRE_DEBUG_ARTIFACT: '1'
+        run: npm run verify:release
 
       # 8. Загрузить артефакты (доступны для скачивания в Actions)
       - name: Upload artifacts

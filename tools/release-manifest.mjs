@@ -20,6 +20,14 @@ const NACP_PRESENCE_GROUP_ID_OFFSET = 0x3038;
 const NACP_STARTUP_USER_ACCOUNT_OFFSET = 0x3025;
 const NACP_SAVE_DATA_SIZE_OFFSET = 0x3080;
 const NACP_JOURNAL_SIZE_OFFSET = 0x3088;
+const NACP_BCAT_SIZE_OFFSET = 0x3090;
+
+export const RELEASE_NACP_POLICY = Object.freeze({
+  startupUserAccount: 0,
+  saveDataSize: '32768',
+  journalSize: '32768',
+  bcatDeliveryCacheStorageSize: '0',
+});
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const text = (bytes, start, length) => new TextDecoder().decode(bytes.subarray(start, start + length)).replace(/\0.*$/, '');
@@ -46,7 +54,7 @@ export function inspectNro(buffer) {
 function nacpSummary(buffer, layout) {
   const start = layout.sections.nacp.offset;
   const end = start + layout.sections.nacp.size;
-  if (end - start < NACP_JOURNAL_SIZE_OFFSET + 8) throw new Error('NACP section is too small');
+  if (end - start < NACP_BCAT_SIZE_OFFSET + 8) throw new Error('NACP section is too small');
   const bytes = buffer.subarray(start, end);
   return {
     title: text(bytes, 0, NACP_TITLE_SIZE),
@@ -55,7 +63,77 @@ function nacpSummary(buffer, layout) {
     startupUserAccount: bytes.readUInt8(NACP_STARTUP_USER_ACCOUNT_OFFSET),
     saveDataSize: bytes.readBigUInt64LE(NACP_SAVE_DATA_SIZE_OFFSET).toString(),
     journalSize: bytes.readBigUInt64LE(NACP_JOURNAL_SIZE_OFFSET).toString(),
+    bcatDeliveryCacheStorageSize: bytes.readBigUInt64LE(NACP_BCAT_SIZE_OFFSET).toString(),
   };
+}
+
+export function validateArtifactPath(path, expected = null) {
+  if (typeof path !== 'string' || path.length === 0 || path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.includes('\\') || path.split('/').some((segment) => segment === '.' || segment === '..' || segment.length === 0)) {
+    throw new Error(`release artifact path is unsafe: ${path}`);
+  }
+  if (expected !== null && path !== expected) throw new Error(`release artifact path mismatch: ${path} != ${expected}`);
+  return path;
+}
+
+export function validateNacpPolicy(nacp, { label = 'NRO', expectedTitle, expectedId, expectedAuthor } = {}) {
+  if (!nacp || typeof nacp !== 'object' || Array.isArray(nacp)) throw new Error(`NACP summary is missing for ${label}`);
+  if (expectedTitle !== undefined && nacp.title !== expectedTitle) throw new Error(`NACP title mismatch for ${label}: ${nacp.title} != ${expectedTitle}`);
+  if (expectedId !== undefined && nacp.id !== expectedId) throw new Error(`NACP application id mismatch for ${label}: ${nacp.id} != ${expectedId}`);
+  if (expectedAuthor !== undefined && nacp.author !== expectedAuthor) throw new Error(`NACP author mismatch for ${label}: ${nacp.author} != ${expectedAuthor}`);
+  for (const [key, expected] of Object.entries(RELEASE_NACP_POLICY)) {
+    if (String(nacp[key]) !== String(expected)) throw new Error(`NACP ${key} policy mismatch for ${label}: ${nacp[key]} != ${expected}`);
+  }
+  return nacp;
+}
+
+export function inspectNroArtifact(buffer, { path, kind, expectedTitle, expectedId, expectedAuthor } = {}) {
+  validateArtifactPath(path);
+  if (typeof kind !== 'string' || !['release', 'debug'].includes(kind)) throw new Error(`release artifact kind is invalid: ${kind}`);
+  const layout = inspectNro(buffer);
+  const nacp = validateNacpPolicy(nacpSummary(buffer, layout), { label: path, expectedTitle, expectedId, expectedAuthor });
+  return {
+    path,
+    kind,
+    sha256: digest(buffer),
+    bytes: buffer.byteLength,
+    executableSha256: digest(buffer.subarray(0, layout.nroSize)),
+    nacp,
+  };
+}
+
+function validateDigest(value, label) {
+  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/i.test(value)) throw new Error(`${label} digest is invalid`);
+}
+
+export function validateArtifactSet(artifacts, { requireDebugArtifact = false, label = 'release artifact set' } = {}) {
+  if (!artifacts || typeof artifacts !== 'object' || Array.isArray(artifacts)) throw new Error(`${label} is missing`);
+  const release = artifacts.nro;
+  if (!release || release.kind !== 'release') throw new Error(`${label} is missing a release NRO`);
+  validateArtifactPath(release.path, 'burialnx.nro');
+  if (!Number.isInteger(release.bytes) || release.bytes <= 0) throw new Error(`${label}.nro byte size is invalid`);
+  validateDigest(release.sha256, `${label}.nro`);
+  validateDigest(release.executableSha256, `${label}.nro executable`);
+  validateNacpPolicy(release.nacp, { label: `${label}.nro` });
+  const runtimeExecutable = artifacts.runtimeExecutable;
+  if (!runtimeExecutable || runtimeExecutable.sha256 !== release.executableSha256 || runtimeExecutable.expectedSha256 !== pinnedCode) {
+    throw new Error(`${label}.runtimeExecutable is not bound to the release executable`);
+  }
+  const debug = artifacts.debugNro;
+  if (requireDebugArtifact && !debug) throw new Error(`${label} requires burialnx-debug.nro`);
+  if (debug) {
+    validateArtifactPath(debug.path, 'burialnx-debug.nro');
+    if (debug.kind !== 'debug') throw new Error(`${label}.debugNro kind is invalid`);
+    if (!Number.isInteger(debug.bytes) || debug.bytes <= 0) throw new Error(`${label}.debugNro byte size is invalid`);
+    validateDigest(debug.sha256, `${label}.debugNro`);
+    validateDigest(debug.executableSha256, `${label}.debugNro executable`);
+    validateNacpPolicy(debug.nacp, {
+      label: `${label}.debugNro`,
+      expectedTitle: `${release.nacp.title}-Debug`,
+      expectedId: release.nacp.id,
+      expectedAuthor: release.nacp.author,
+    });
+  }
+  return artifacts;
 }
 
 function command(name, args, cwd) {
@@ -161,15 +239,45 @@ async function neutralSmokeReport(project) {
   }
 }
 
-export async function generateManifest(nroPath = 'burialnx.nro', { project = resolve('.'), write = true } = {}) {
+export async function generateManifest(nroPath = 'burialnx.nro', { project = resolve('.'), write = true, requireDebugArtifact = process.env.BURIALNX_REQUIRE_DEBUG_ARTIFACT === '1' } = {}) {
   const absoluteNro = resolve(project, nroPath);
+  const releasePath = validateArtifactPath(relative(project, absoluteNro));
   const buffer = await readFile(absoluteNro);
-  const layout = inspectNro(buffer);
-  await checkVideoRuntime(buffer);
   const packageJson = JSON.parse(await readFile(resolve(project, 'package.json'), 'utf8'));
+  const expectedTitle = packageJson.nacp?.title || 'BurialNX';
+  const expectedId = String(packageJson.nacp?.id ?? '').toLowerCase().replace(/^0x/, '').padStart(16, '0');
+  const expectedAuthor = packageJson.nacp?.author;
+  const releaseArtifact = inspectNroArtifact(buffer, {
+    path: releasePath,
+    kind: 'release',
+    expectedTitle,
+    expectedId: expectedId || undefined,
+    expectedAuthor,
+  });
+  await checkVideoRuntime(buffer);
   const runtimeManifest = JSON.parse(await readFile(resolve(project, 'runtime/manifest.json'), 'utf8'));
   const runtimeProvenance = await verifyRuntimeProvenance({ project, manifest: runtimeManifest });
-  const nacp = nacpSummary(buffer, layout);
+  const nacp = releaseArtifact.nacp;
+  const debugAbsolute = resolve(project, 'burialnx-debug.nro');
+  let debugArtifact = null;
+  let debugBuffer = null;
+  try {
+    debugBuffer = await readFile(debugAbsolute);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  if (debugBuffer) {
+    debugArtifact = inspectNroArtifact(debugBuffer, {
+      path: 'burialnx-debug.nro',
+      kind: 'debug',
+      expectedTitle: `${expectedTitle}-Debug`,
+      expectedId: expectedId || undefined,
+      expectedAuthor,
+    });
+    await checkVideoRuntime(debugBuffer);
+  } else if (requireDebugArtifact) {
+    throw new Error('release artifact set requires burialnx-debug.nro');
+  }
   const neutralFixture = resolve(project, 'tests/fixtures/neutral-mv/www');
   const modFixture = resolve(project, 'tests/fixtures/neutral-mv/mod');
   const packageFixture = resolve(project, 'tests/fixtures/generic-mv/www');
@@ -187,11 +295,14 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   if (nativeRebuild.projectCommit && nativeRebuild.projectCommit !== gitCommit) throw new Error('native rebuild report project commit does not match the release commit');
   const gitStatus = command('git', ['status', '--porcelain=v1', '--untracked-files=all'], project);
   const sourceTree = await sourceTreeSha256(project);
-  const expectedId = String(packageJson.nacp?.id ?? '').toLowerCase().replace(/^0x/, '').padStart(16, '0');
-  if (packageJson.nacp?.title && nacp.title !== packageJson.nacp.title) throw new Error(`NACP title mismatch: ${nacp.title} != ${packageJson.nacp.title}`);
-  if (expectedId && nacp.id !== expectedId) throw new Error(`NACP application id mismatch: ${nacp.id} != ${expectedId}`);
+  const artifacts = {
+    nro: releaseArtifact,
+    runtimeExecutable: { sha256: releaseArtifact.executableSha256, expectedSha256: pinnedCode, source: 'computed from final NRO executable section' },
+  };
+  if (debugArtifact) artifacts.debugNro = debugArtifact;
+  validateArtifactSet(artifacts, { requireDebugArtifact, label: 'release artifact set' });
   const manifest = {
-    schema: 3,
+    schema: 4,
     package: { name: packageJson.name, version: packageJson.version },
     gitCommit,
     gitDirty: gitStatus.length > 0,
@@ -201,10 +312,12 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
     browserValidation: { ...browserValidation, reportPath: BROWSER_REPORT_PATH },
     nativeRebuild,
     externalRuntime,
-    artifacts: {
-      nro: { path: relative(project, absoluteNro), kind: 'release', sha256: digest(buffer), bytes: buffer.byteLength, executableSha256: digest(buffer.subarray(0, layout.nroSize)) },
-      runtimeExecutable: { sha256: digest(buffer.subarray(0, layout.nroSize)), expectedSha256: pinnedCode, source: 'computed from final NRO executable section' },
+    artifactSet: {
+      schema: 1,
+      debugRequired: requireDebugArtifact,
+      artifacts: debugArtifact ? ['nro', 'debugNro'] : ['nro'],
     },
+    artifacts,
     nacp,
     packageAcceptance: {
       ...packageAcceptance,
@@ -250,6 +363,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       browser: browserValidation.status === 'pass' ? 'desktop-browser: pass' : browserValidation.status,
       native: nativeRebuild.status === 'pass' ? 'source-to-runtime: pass' : nativeRebuild.status === 'mismatch' ? 'not verified (executable digest mismatch)' : 'not run',
       externalRuntime: externalRuntime.status === 'pass' ? 'external-runtime-identity: pass' : 'not run',
+      artifacts: 'release-artifact-set: pass',
       hardware: runtimeManifest.hardwarePlaybackObserved === true ? 'observed in runtime manifest' : 'not verified',
     },
   };
