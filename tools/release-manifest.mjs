@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -7,6 +8,7 @@ import { checkVideoRuntime, pinnedCode } from './check-video-runtime.mjs';
 import { acceptHost } from './accept-host.mjs';
 import { acceptPackage } from './accept-package.mjs';
 import { acceptPackageRuntime } from './accept-package-runtime.mjs';
+import { validateExternalRuntimeReport } from './accept-external-runtime.mjs';
 import { verifyRuntimeProvenance } from './verify-runtime-provenance.mjs';
 import { BROWSER_REPORT_PATH, readBrowserValidationReport } from './browser-report.mjs';
 
@@ -101,6 +103,51 @@ async function reproducibilityReport(project) {
   }
 }
 
+export function externalRuntimeNotRunReport() {
+  return {
+    schema: 1,
+    tool: 'accept:external-runtime',
+    status: 'not-run',
+    scope: 'external-runtime-identity',
+    execution: 'not-run',
+    reason: 'no external runtime report was supplied',
+    reportPath: null,
+    environment: { mode: 'external-runtime', switch: 'not-available', hardware: 'not-verified' },
+    declaredRuntime: null,
+    observedRuntime: null,
+    package: null,
+    probe: null,
+    switchRuntime: 'not-verified',
+    nativeSourceRebuild: 'not-verified',
+    hardware: 'not-verified',
+    commercialGame: 'not-verified',
+  };
+}
+
+export async function loadExternalRuntimeReport(project) {
+  const suppliedPath = process.env.BURIALNX_EXTERNAL_RUNTIME_REPORT?.trim();
+  if (!suppliedPath) return externalRuntimeNotRunReport();
+  const absolute = resolve(project, suppliedPath);
+  let report;
+  try {
+    report = JSON.parse(await readFile(absolute, 'utf8'));
+  } catch (error) {
+    throw new Error(`external runtime report could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  validateExternalRuntimeReport(report, { requireExternalProcess: true });
+  let executablePath;
+  try { executablePath = await realpath(report.observedRuntime.execPath); }
+  catch (error) { throw new Error(`external runtime executable could not be resolved: ${error instanceof Error ? error.message : String(error)}`); }
+  if (executablePath !== report.observedRuntime.execPath) throw new Error('external runtime report execPath is not canonical');
+  const executableInfo = await stat(executablePath);
+  if (!executableInfo.isFile()) throw new Error('external runtime report execPath is not a regular file');
+  try { await access(executablePath, constants.R_OK | constants.X_OK); }
+  catch (error) { throw new Error(`external runtime report execPath is not executable: ${error instanceof Error ? error.message : String(error)}`); }
+  const executableSha256 = digest(await readFile(executablePath));
+  if (executableSha256 !== report.observedRuntime.executableSha256.toLowerCase()) throw new Error('external runtime report executable digest is stale or tampered');
+  return { ...report, reportPath: relative(project, absolute) || absolute };
+}
+
 async function neutralSmokeReport(project) {
   try {
     const report = JSON.parse(await readFile(resolve(project, 'neutral-smoke.json'), 'utf8'));
@@ -134,6 +181,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   const reproducibility = await reproducibilityReport(project);
   const browserValidation = await readBrowserValidationReport(project);
   const nativeRebuild = await nativeRebuildReport(project);
+  const externalRuntime = await loadExternalRuntimeReport(project);
   const lockfile = await readFile(resolve(project, 'package-lock.json'));
   const gitCommit = command('git', ['rev-parse', 'HEAD'], project);
   if (nativeRebuild.projectCommit && nativeRebuild.projectCommit !== gitCommit) throw new Error('native rebuild report project commit does not match the release commit');
@@ -143,7 +191,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   if (packageJson.nacp?.title && nacp.title !== packageJson.nacp.title) throw new Error(`NACP title mismatch: ${nacp.title} != ${packageJson.nacp.title}`);
   if (expectedId && nacp.id !== expectedId) throw new Error(`NACP application id mismatch: ${nacp.id} != ${expectedId}`);
   const manifest = {
-    schema: 2,
+    schema: 3,
     package: { name: packageJson.name, version: packageJson.version },
     gitCommit,
     gitDirty: gitStatus.length > 0,
@@ -152,6 +200,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
     runtimeProvenance,
     browserValidation: { ...browserValidation, reportPath: BROWSER_REPORT_PATH },
     nativeRebuild,
+    externalRuntime,
     artifacts: {
       nro: { path: relative(project, absoluteNro), kind: 'release', sha256: digest(buffer), bytes: buffer.byteLength, executableSha256: digest(buffer.subarray(0, layout.nroSize)) },
       runtimeExecutable: { sha256: digest(buffer.subarray(0, layout.nroSize)), expectedSha256: pinnedCode, source: 'computed from final NRO executable section' },
@@ -200,6 +249,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       smoke: neutralSmoke.status === 'pass' ? 'neutral-port-contract: pass' : neutralSmoke.status,
       browser: browserValidation.status === 'pass' ? 'desktop-browser: pass' : browserValidation.status,
       native: nativeRebuild.status === 'pass' ? 'source-to-runtime: pass' : nativeRebuild.status === 'mismatch' ? 'not verified (executable digest mismatch)' : 'not run',
+      externalRuntime: externalRuntime.status === 'pass' ? 'external-runtime-identity: pass' : 'not run',
       hardware: runtimeManifest.hardwarePlaybackObserved === true ? 'observed in runtime manifest' : 'not verified',
     },
   };

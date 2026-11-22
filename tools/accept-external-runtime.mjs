@@ -228,6 +228,35 @@ async function validateProbeResult(result, { nonce, runtimePath, runtimeSha256, 
   return { observed, version };
 }
 
+export function validateExternalRuntimeReport(report, { requireExternalProcess = false } = {}) {
+  assert(report && typeof report === 'object' && !Array.isArray(report), 'external runtime report must be an object');
+  assert(report.schema === 1, 'external runtime report schema is invalid');
+  assert(report.tool === 'accept:external-runtime', 'external runtime report tool is invalid');
+  assert(report.status === 'pass', 'external runtime report must be a passing report');
+  assert(report.scope === 'external-runtime-identity', 'external runtime report scope is invalid');
+  assert(requireExternalProcess ? report.execution === 'external-process-probe' : ['external-process-probe', 'injected-process-test'].includes(report.execution), 'external runtime report execution mode is invalid');
+  assert(report.environment?.mode === 'external-runtime' && report.environment?.switch === 'not-available' && report.environment?.hardware === 'not-verified', 'external runtime report environment boundary is invalid');
+  assert(report.declaredRuntime?.kind === 'nwjs', 'external runtime declared kind is invalid');
+  assert(report.declaredRuntime.version === null || typeof report.declaredRuntime.version === 'string', 'external runtime declared version is invalid');
+  assert(report.observedRuntime?.kind === 'nwjs' && report.observedRuntime.status === 'observed', 'external runtime observed identity is invalid');
+  assert(typeof report.observedRuntime.version === 'string' && report.observedRuntime.version.length > 0, 'external runtime observed version is missing');
+  assert(report.observedRuntime.processVersions && typeof report.observedRuntime.processVersions === 'object' && !Array.isArray(report.observedRuntime.processVersions) && typeof report.observedRuntime.processVersions.nw === 'string' && report.observedRuntime.processVersions.nw === report.observedRuntime.version, 'external runtime process.versions.nw is inconsistent');
+  const version = versionMatches(report.declaredRuntime.version, report.observedRuntime.version);
+  assert(version.matched && version.mode === report.observedRuntime.versionMatch, 'external runtime declared/observed version match is inconsistent');
+  assert(typeof report.observedRuntime.execPath === 'string' && report.observedRuntime.execPath.length > 0, 'external runtime execPath is missing');
+  assert(typeof report.observedRuntime.executableSha256 === 'string' && /^[0-9a-f]{64}$/i.test(report.observedRuntime.executableSha256), 'external runtime executable digest is invalid');
+  assert(typeof report.package?.profileId === 'string' && report.package.profileId.length > 0 && typeof report.package.entry === 'string' && report.package.entry.length > 0, 'external runtime package binding identity is invalid');
+  assert(report.package.bindingSource === 'host-port-check' && report.package.probeBinding === 'host-provided-echo', 'external runtime package binding provenance is invalid');
+  assert(typeof report.package.packageBindingSha256 === 'string' && /^[0-9a-f]{64}$/i.test(report.package.packageBindingSha256), 'external runtime package binding digest is invalid');
+  assert(report.package.gameScriptsExecuted === false && report.package.compatibility === 'not-verified', 'external runtime report overclaims package execution or compatibility');
+  assert(typeof report.probe?.nonce === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(report.probe.nonce), 'external runtime probe nonce is invalid');
+  assert(report.probe.exited === true && report.probe.exitCode === 0 && report.probe.signal === null && Number.isInteger(report.probe.timeoutMs) && report.probe.timeoutMs >= 100, 'external runtime probe completion is invalid');
+  for (const [key, expected] of [['switchRuntime', 'not-verified'], ['nativeSourceRebuild', 'not-verified'], ['hardware', 'not-verified'], ['commercialGame', 'not-verified']]) {
+    assert(report[key] === expected, `external runtime report ${key} boundary is invalid`);
+  }
+  return report;
+}
+
 export async function acceptExternalRuntime({
   runtime = null,
   gameRoot = fixture,

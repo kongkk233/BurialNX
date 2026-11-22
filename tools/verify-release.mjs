@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { generateManifest, inspectNro } from './release-manifest.mjs';
+import { externalRuntimeNotRunReport, generateManifest, inspectNro } from './release-manifest.mjs';
+import { validateExternalRuntimeReport } from './accept-external-runtime.mjs';
 import { validateBrowserReport } from './browser-report.mjs';
 
 const project = resolve('.');
@@ -61,6 +62,17 @@ function verifyLifecycleEvidence(report, label) {
   }
 }
 
+function verifyExternalRuntimeEvidence(report, label) {
+  if (!report || typeof report !== 'object') throw new Error(`${label} is missing`);
+  if (report.status === 'not-run') {
+    if (JSON.stringify(report) !== JSON.stringify(externalRuntimeNotRunReport())) throw new Error(`${label} not-run report is not the explicit default boundary`);
+    return;
+  }
+  try { validateExternalRuntimeReport(report, { requireExternalProcess: true }); }
+  catch (error) { throw new Error(`${label} is invalid: ${error instanceof Error ? error.message : String(error)}`); }
+  if (typeof report.reportPath !== 'string' || !report.reportPath) throw new Error(`${label}.reportPath is missing`);
+}
+
 function verifyPackageRuntimeEvidence(report, label) {
   if (!report || typeof report !== 'object') throw new Error(`${label} is missing`);
   const declared = report.declaredRuntime;
@@ -96,6 +108,9 @@ if (actual.runtimeProvenance.status !== 'pass' || actual.runtimeProvenance.verif
 if (actual.runtimeProvenance.unverified.some((claim) => claim.status !== 'not-verified')) throw new Error('runtime provenance boundary is not explicit');
 if (JSON.stringify(stored.browserValidation) !== JSON.stringify(actual.browserValidation)) throw new Error('release manifest browser validation is stale');
 if (JSON.stringify(stored.nativeRebuild) !== JSON.stringify(actual.nativeRebuild)) throw new Error('release manifest native rebuild report is stale');
+if (JSON.stringify(stored.externalRuntime) !== JSON.stringify(actual.externalRuntime)) throw new Error('release manifest external runtime report is stale');
+verifyExternalRuntimeEvidence(stored.externalRuntime, 'stored.externalRuntime');
+verifyExternalRuntimeEvidence(actual.externalRuntime, 'actual.externalRuntime');
 if (actual.nativeRebuild.status !== 'not-run' && actual.nativeRebuild.projectCommit && actual.nativeRebuild.projectCommit !== actual.gitCommit) throw new Error('native rebuild report project commit does not match the release commit');
 if (!['not-run', 'pass', 'mismatch'].includes(actual.nativeRebuild.status)) throw new Error('native rebuild report status is not explicit');
 if (actual.nativeRebuild.status === 'mismatch' && actual.validation.native !== 'not verified (executable digest mismatch)') throw new Error('native digest mismatch was not preserved as not verified');
@@ -136,7 +151,9 @@ if (JSON.stringify(stored.reproducibility) !== JSON.stringify(actual.reproducibi
 if (actual.reproducibility.status !== 'pass' || actual.reproducibility.byteIdentical !== true) throw new Error('release reproducibility gate did not pass');
 if (actual.reproducibility.gitCommit !== actual.gitCommit || actual.reproducibility.gitDirty !== false) throw new Error('reproducibility provenance does not match the clean release commit');
 if (!Array.isArray(actual.reproducibility.builds) || actual.reproducibility.builds.length !== 2 || actual.reproducibility.builds.some((build) => build.sha256 !== actual.artifacts.nro.sha256 || build.bytes !== actual.artifacts.nro.bytes)) throw new Error('reproducibility report does not describe the release NRO twice');
-for (const key of ['profile', 'packageAcceptance', 'packageRuntimeAcceptance', 'lifecycle', 'nodeCompat', 'portCheck', 'acceptHost', 'overlayAcceptance', 'reproducibility', 'runtimeProvenance', 'npmTest', 'typecheck', 'structural', 'runtime', 'smoke', 'browser', 'native', 'hardware']) {
+if (actual.externalRuntime.status === 'not-run' && actual.validation.externalRuntime !== 'not run') throw new Error('missing external runtime report was not represented as not run');
+if (actual.externalRuntime.status === 'pass' && actual.validation.externalRuntime !== 'external-runtime-identity: pass') throw new Error('external runtime identity pass was not represented explicitly');
+for (const key of ['profile', 'packageAcceptance', 'packageRuntimeAcceptance', 'lifecycle', 'nodeCompat', 'portCheck', 'acceptHost', 'overlayAcceptance', 'reproducibility', 'runtimeProvenance', 'npmTest', 'typecheck', 'structural', 'runtime', 'smoke', 'browser', 'native', 'externalRuntime', 'hardware']) {
   if (stored.validation?.[key] !== actual.validation?.[key]) throw new Error(`release manifest validation.${key} is stale`);
 }
 inspectNro(await readFile(resolve(project, 'burialnx.nro')));

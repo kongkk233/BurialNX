@@ -5,7 +5,8 @@ import { createHash } from 'node:crypto';
 import { cp, chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { acceptExternalRuntime, parseArgs, versionMatches } from '../tools/accept-external-runtime.mjs';
+import { acceptExternalRuntime, parseArgs, validateExternalRuntimeReport, versionMatches } from '../tools/accept-external-runtime.mjs';
+import { externalRuntimeNotRunReport, loadExternalRuntimeReport } from '../tools/release-manifest.mjs';
 import { acceptHost } from '../tools/accept-host.mjs';
 import { verifyRuntimeProvenance } from '../tools/verify-runtime-provenance.mjs';
 import { validateBrowserReport } from '../tools/browser-report.mjs';
@@ -282,6 +283,90 @@ test('external runtime acceptance rejects unavailable executables and ambiguous 
   assert.deepEqual(versionMatches('0.29.x', '0.29.7'), { matched: true, mode: 'explicit-pattern' });
   assert.deepEqual(versionMatches('0.29', '0.29.7'), { matched: false, mode: 'mismatch' });
   assert.deepEqual(versionMatches('0.29.7', '0.29.7'), { matched: true, mode: 'exact' });
+});
+
+test('release manifest external runtime evidence defaults to an explicit not-run boundary', async () => {
+  const oldReport = process.env.BURIALNX_EXTERNAL_RUNTIME_REPORT;
+  delete process.env.BURIALNX_EXTERNAL_RUNTIME_REPORT;
+  try {
+    assert.deepEqual(await loadExternalRuntimeReport(resolve('.')), externalRuntimeNotRunReport());
+  } finally {
+    if (oldReport === undefined) delete process.env.BURIALNX_EXTERNAL_RUNTIME_REPORT;
+    else process.env.BURIALNX_EXTERNAL_RUNTIME_REPORT = oldReport;
+  }
+});
+
+test('release manifest accepts only a real external-process identity report', async () => {
+  const temporary = await mkdtemp(resolve('.test-external-runtime-report-'));
+  const reportPath = join(temporary, 'external-runtime.json');
+  const runtimePath = join(temporary, 'nwjs');
+  await writeFile(runtimePath, 'synthetic external runtime\n');
+  await chmod(runtimePath, 0o755);
+  const executableSha256 = createHash('sha256').update(await readFile(runtimePath)).digest('hex');
+  const oldReport = process.env.BURIALNX_EXTERNAL_RUNTIME_REPORT;
+  process.env.BURIALNX_EXTERNAL_RUNTIME_REPORT = reportPath;
+  const report = {
+    schema: 1,
+    tool: 'accept:external-runtime',
+    status: 'pass',
+    scope: 'external-runtime-identity',
+    execution: 'external-process-probe',
+    environment: { mode: 'external-runtime', switch: 'not-available', hardware: 'not-verified' },
+    declaredRuntime: { kind: 'nwjs', version: '0.29.x' },
+    observedRuntime: {
+      kind: 'nwjs',
+      version: '0.29.7',
+      versionMatch: 'explicit-pattern',
+      processVersions: { nw: '0.29.7' },
+      execPath: runtimePath,
+      executableSha256,
+      status: 'observed',
+    },
+    package: {
+      profileId: 'generic-mv',
+      entry: 'index.html',
+      packageBindingSha256: 'b'.repeat(64),
+      bindingSource: 'host-port-check',
+      probeBinding: 'host-provided-echo',
+      gameScriptsExecuted: false,
+      compatibility: 'not-verified',
+    },
+    probe: { nonce: '123e4567-e89b-12d3-a456-426614174000', exited: true, exitCode: 0, signal: null, timeoutMs: 15_000 },
+    switchRuntime: 'not-verified',
+    nativeSourceRebuild: 'not-verified',
+    hardware: 'not-verified',
+    commercialGame: 'not-verified',
+  };
+  try {
+    validateExternalRuntimeReport(report, { requireExternalProcess: true });
+    for (const [label, tampered, expected] of [
+      ['status', { ...report, status: 'not-verified' }, /must be a passing report/],
+      ['scope', { ...report, scope: 'package-compatibility' }, /scope is invalid/],
+      ['nonce', { ...report, probe: { ...report.probe, nonce: 'not-a-uuid' } }, /probe nonce is invalid/],
+      ['digest', { ...report, observedRuntime: { ...report.observedRuntime, executableSha256: 'c'.repeat(64) } }, /executable digest is stale or tampered/],
+      ['version match', { ...report, observedRuntime: { ...report.observedRuntime, versionMatch: 'exact' } }, /version match is inconsistent/],
+      ['boundary', { ...report, commercialGame: 'verified' }, /commercialGame boundary is invalid/],
+    ]) {
+      await writeFile(reportPath, `${JSON.stringify(tampered)}\n`);
+      await assert.rejects(loadExternalRuntimeReport(resolve('.')), expected, `${label} tamper must fail closed`);
+    }
+    await writeFile(reportPath, `${JSON.stringify(report)}\n`);
+    try {
+      const loaded = await loadExternalRuntimeReport(resolve('.'));
+      assert.equal(loaded.status, 'pass');
+      assert.equal(loaded.execution, 'external-process-probe');
+      assert.equal(loaded.reportPath, `.test-external-runtime-report-${temporary.split('.test-external-runtime-report-')[1]}/external-runtime.json`);
+      assert.equal(loaded.hardware, 'not-verified');
+      const overclaim = { ...report, hardware: 'verified' };
+      await writeFile(reportPath, `${JSON.stringify(overclaim)}\n`);
+      await assert.rejects(loadExternalRuntimeReport(resolve('.')), /hardware boundary is invalid/);
+    } finally {
+      if (oldReport === undefined) delete process.env.BURIALNX_EXTERNAL_RUNTIME_REPORT;
+      else process.env.BURIALNX_EXTERNAL_RUNTIME_REPORT = oldReport;
+    }
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
 });
 
 test('generic package acceptance keeps mod-first profile precedence without executing scripts', async () => {
