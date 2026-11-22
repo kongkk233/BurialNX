@@ -12,6 +12,16 @@ The distributed native blob is traceable to the historical BurialNX PR commit th
 - Historical/current Git blob SHA-1: `d58651b6478db5ab4a90a2b8c3482b0efdc26102`
 - Current gzip SHA-256: `aed903bf861be6e7baaa9dda3522dfeda60b2c4646a7d7dc9557101247d92874`
 
+A historical local package artifact was also recovered and independently checked: both the regular and debug NROs have the expected full-package hashes, and their first `55,603,200` bytes match the decompressed distributed runtime byte-for-byte. The historical evidence report is bound by SHA-256 in `runtime/manifest.json`; it records `physicalSwitchTestPerformed: false`. This confirms package identity and distribution consistency only—it does not provide the missing original source-build transcript.
+
+```text
+historical evidence JSON: 1b3adb14bedf86cb4c0c7f8553e7ee57337fc23d45d96a344afeb0a68a22387c
+regular NRO:              6c07f84ed2c59bbf84aa5af2cd8fc3873db17a4998f2afc3a94b57dc6653ef53
+regular executable:       d19416181cc10974ac8b44f902fb0232f032f78e38021f7dbce1dcc3c2834cb6
+debug NRO:                2223de447f4c3a92b16c4887fb68ad24946c71ba8a221b84ea44141473fc0108
+debug executable:         d19416181cc10974ac8b44f902fb0232f032f78e38021f7dbce1dcc3c2834cb6
+```
+
 The historical manifest records an ARM Mac devkitPro build claim and signed host-tool verification claim, but the repository does not contain the original ARM toolchain binaries, signature transcript, standalone NRO, or build log. Public devkitPro sources do provide a macOS installation/build path, but not the historical package lock, Apple SDK details, or host-tool snapshot needed for bit-for-bit reproduction. The current CI therefore does not upgrade native provenance merely because the distributed blob's Git lineage is known.
 
 The actual CI report records `buildHost: { platform: "linux", arch: "x64" }`, GCC `15.2.0`, Binutils `2.45.1`, and Node `v22.22.2`. This is an independently reproducible Linux evidence path, not evidence that the historical ARM Mac build was replayed.

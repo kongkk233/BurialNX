@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 
 const SHA256 = /^[a-f0-9]{64}$/i;
 const SHA1 = /^[a-f0-9]{40}$/i;
@@ -55,6 +56,47 @@ async function verifyGitBlobClaim({ project, claim, pathValue, expectedSha1 }) {
     status: actualSha1 === String(expectedSha1).toLowerCase() ? 'pass' : 'fail',
   };
   if (result.status !== 'pass') throw new Error(`${claim} mismatch: ${actualSha1} != ${result.expectedSha1}`);
+  return result;
+}
+
+async function verifyCompressedProgramClaim({ project, claim, pathValue, expectedSha256, expectedBytes }) {
+  if (!SHA256.test(String(expectedSha256 ?? ''))) {
+    throw new Error(`${claim} has an invalid expected SHA-256`);
+  }
+  if (!Number.isSafeInteger(expectedBytes) || expectedBytes <= 0) {
+    throw new Error(`${claim} has an invalid expected byte count`);
+  }
+  const candidate = projectPath(project, pathValue, `${claim} path`);
+  let compressed;
+  try {
+    compressed = await readFile(candidate);
+  } catch (error) {
+    if (error?.code === 'ENOENT') throw new Error(`${claim} file is missing: ${pathValue}`);
+    throw error;
+  }
+  let program;
+  try {
+    program = gunzipSync(compressed);
+  } catch (error) {
+    throw new Error(`${claim} is not valid gzip: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const actualSha256 = digest(program);
+  if (program.byteLength !== expectedBytes) {
+    throw new Error(`${claim} byte count mismatch: ${program.byteLength} != ${expectedBytes}`);
+  }
+  if (program.toString('ascii', 16, 20) !== 'NRO0' || program.readUInt32LE(24) !== program.byteLength) {
+    throw new Error(`${claim} is not an exact NRO program section`);
+  }
+  const result = {
+    claim,
+    path: relativeProjectPath(project, candidate),
+    expectedSha256: String(expectedSha256).toLowerCase(),
+    actualSha256,
+    bytes: program.byteLength,
+    compressedBytes: compressed.byteLength,
+    status: actualSha256 === String(expectedSha256).toLowerCase() ? 'pass' : 'fail',
+  };
+  if (result.status !== 'pass') throw new Error(`${claim} mismatch: ${actualSha256} != ${result.expectedSha256}`);
   return result;
 }
 
@@ -112,6 +154,23 @@ export async function verifyRuntimeProvenance({ project = resolve('.'), manifest
   if (distributed.sourceCommitRole !== 'historical-distribution-commit' || distributed.exactRebuildStatus !== 'not-verified') {
     throw new Error('runtime distributed artifact provenance boundary is invalid');
   }
+  const historical = runtimeManifest.historicalPackageEvidence;
+  if (!historical || typeof historical !== 'object' || Array.isArray(historical)) {
+    throw new Error('runtime historical package evidence is missing');
+  }
+  for (const [key, value] of Object.entries(historical)) {
+    if (key.endsWith('Sha256') && !SHA256.test(String(value))) {
+      throw new Error(`runtime historical package evidence ${key} is invalid`);
+    }
+  }
+  if (historical.programBytes !== runtimeManifest.rawProgramBytes ||
+      historical.regularNroExecutableSha256 !== runtimeManifest.fixedExeSha256 ||
+      historical.debugNroExecutableSha256 !== runtimeManifest.fixedExeSha256 ||
+      historical.packagesContainExactDistributedProgram !== true ||
+      historical.physicalSwitchTestPerformed !== false ||
+      historical.exactRebuildStatus !== 'not-verified') {
+    throw new Error('runtime historical package evidence boundary is invalid');
+  }
   const verified = [
     await verifyFileClaim({
       project: root,
@@ -131,6 +190,13 @@ export async function verifyRuntimeProvenance({ project = resolve('.'), manifest
       pathValue: 'runtime/nxjs-preroll.nro-code.gz',
       expectedSha256: runtimeManifest.prerollGzipSha256,
     }),
+    await verifyCompressedProgramClaim({
+      project: root,
+      claim: 'runtime.fixedExecutableSha256',
+      pathValue: 'runtime/nxjs-preroll.nro-code.gz',
+      expectedSha256: runtimeManifest.fixedExeSha256,
+      expectedBytes: runtimeManifest.rawProgramBytes,
+    }),
     await verifyGitBlobClaim({
       project: root,
       claim: 'runtime.distributedArtifactGitBlobSha1',
@@ -140,6 +206,11 @@ export async function verifyRuntimeProvenance({ project = resolve('.'), manifest
   ];
 
   const unverified = [
+    unverifiedClaim(
+      'runtime.historicalPackageEvidence',
+      historical,
+      'historical NRO/evidence files are external to this repository; matching the distributed program proves package identity, not the original source-to-runtime build process',
+    ),
     unverifiedClaim(
       'runtime.distributedArtifactSourceCommit',
       { repository: distributed.repository, commit: distributed.commit, path: distributed.path },

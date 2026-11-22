@@ -21,6 +21,18 @@
     "sourceCommitRole": "historical-distribution-commit",
     "exactRebuildStatus": "not-verified"
   },
+  "historicalPackageEvidence": {
+    "evidenceFile": "BurialNX-cg6-evidence.json",
+    "evidenceFileSha256": "1b3adb14bedf86cb4c0c7f8553e7ee57337fc23d45d96a344afeb0a68a22387c",
+    "regularNroSha256": "6c07f84ed2c59bbf84aa5af2cd8fc3873db17a4998f2afc3a94b57dc6653ef53",
+    "debugNroSha256": "2223de447f4c3a92b16c4887fb68ad24946c71ba8a221b84ea44141473fc0108",
+    "regularNroExecutableSha256": "d19416181cc10974ac8b44f902fb0232f032f78e38021f7dbce1dcc3c2834cb6",
+    "debugNroExecutableSha256": "d19416181cc10974ac8b44f902fb0232f032f78e38021f7dbce1dcc3c2834cb6",
+    "programBytes": 55603200,
+    "packagesContainExactDistributedProgram": true,
+    "physicalSwitchTestPerformed": false,
+    "exactRebuildStatus": "not-verified"
+  },
   "rawProgramBytes": 55603200,
   "standaloneRuntimeNroSha256": "c12f27fa3e1f36adbaa72b0866029fcb552495e13309f1f1491eb86baf557b61",
   "secondDirectoryStandaloneNroByteIdentical": true,
