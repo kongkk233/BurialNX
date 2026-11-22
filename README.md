@@ -92,19 +92,23 @@ Options are fully translated — Always Dash, BGM/SFX Volume, On/Off — using t
 
 `npm run accept:host` and `npm run accept:overlay` are separate neutral-fixture deep acceptance checks. They exercise the repository's synthetic neutral runtime contract and are not evidence that a commercial game, native decoder, or Switch hardware has been tested.
 
+`npm run verify:runtime-provenance` recomputes the tracked patch and preroll-runtime blob hashes recorded in `runtime/manifest.json`. Its explicit `not-verified` entries cover external nx.js source, SDK/toolchain, signing, and standalone-artifact claims that are recorded but not reconstructed by this host-only repository.
+
 ## 🧰 Port Kit commands
 
 ```bash
 npm ci
 npm run profile:validate -- profiles/examples/minimal-mv.json
 npm run port:check -- --game-root tests/fixtures/neutral-mv/www
-npm run accept:host       # neutral fixture contract; host-only
+npm run accept:package   # generic profile contract; does not execute game scripts
+npm run accept:host       # neutral fixture deep contract; host-only
 npm run accept:overlay    # neutral game + mod-first overlay contract
 npm run smoke:neutral     # same neutral contract through the smoke entrypoint
+npm run verify:runtime-provenance # recompute tracked runtime patch/blob hashes
 npm test                  # host regression tests; not hardware validation
 npm run typecheck         # production TypeScript module/bundle boundary
 npm run build             # release NRO
-npm run verify:release    # all host gates + clean/repro build + release manifest
+npm run verify:release    # all host gates + provenance + clean/repro build + manifest
 ```
 
 Profiles are described by [`profiles/schema.json`](profiles/schema.json), with a neutral example at [`profiles/examples/minimal-mv.json`](profiles/examples/minimal-mv.json). `createMovieResolver` accepts profile-derived media policy while retaining the default MP4/WebM and `-l` fallback behavior when no profile is supplied.

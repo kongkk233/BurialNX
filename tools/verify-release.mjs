@@ -14,6 +14,9 @@ if (stored.gitDirty !== actual.gitDirty) throw new Error('release manifest git d
 if (actual.gitDirty) throw new Error('release verification requires a clean worktree');
 if (stored.sourceTreeSha256 !== actual.sourceTreeSha256) throw new Error('release manifest source tree hash is stale');
 if (stored.toolchain?.lockfileSha256 !== actual.toolchain.lockfileSha256) throw new Error('release manifest lockfile hash is stale');
+if (JSON.stringify(stored.runtimeProvenance) !== JSON.stringify(actual.runtimeProvenance)) throw new Error('release manifest runtime provenance is stale');
+if (actual.runtimeProvenance.status !== 'pass' || actual.runtimeProvenance.verified.some((claim) => claim.status !== 'pass')) throw new Error('runtime provenance gate did not pass');
+if (actual.runtimeProvenance.unverified.some((claim) => claim.status !== 'not-verified')) throw new Error('runtime provenance boundary is not explicit');
 if (stored.artifacts?.nro?.kind !== 'release') throw new Error('release manifest does not describe a release NRO');
 if (stored.artifacts?.nro?.sha256 !== actual.artifacts.nro.sha256) throw new Error('release manifest NRO hash is stale');
 if (stored.artifacts?.runtimeExecutable?.sha256 !== actual.artifacts.runtimeExecutable.sha256) throw new Error('release manifest executable hash is stale');
@@ -34,7 +37,7 @@ if (JSON.stringify(stored.reproducibility) !== JSON.stringify(actual.reproducibi
 if (actual.reproducibility.status !== 'pass' || actual.reproducibility.byteIdentical !== true) throw new Error('release reproducibility gate did not pass');
 if (actual.reproducibility.gitCommit !== actual.gitCommit || actual.reproducibility.gitDirty !== false) throw new Error('reproducibility provenance does not match the clean release commit');
 if (!Array.isArray(actual.reproducibility.builds) || actual.reproducibility.builds.length !== 2 || actual.reproducibility.builds.some((build) => build.sha256 !== actual.artifacts.nro.sha256 || build.bytes !== actual.artifacts.nro.bytes)) throw new Error('reproducibility report does not describe the release NRO twice');
-for (const key of ['profile', 'packageAcceptance', 'portCheck', 'acceptHost', 'overlayAcceptance', 'reproducibility', 'npmTest', 'typecheck', 'structural', 'runtime', 'smoke', 'browser', 'native', 'hardware']) {
+for (const key of ['profile', 'packageAcceptance', 'portCheck', 'acceptHost', 'overlayAcceptance', 'reproducibility', 'runtimeProvenance', 'npmTest', 'typecheck', 'structural', 'runtime', 'smoke', 'browser', 'native', 'hardware']) {
   if (stored.validation?.[key] !== actual.validation?.[key]) throw new Error(`release manifest validation.${key} is stale`);
 }
 inspectNro(await readFile(resolve(project, 'burialnx.nro')));

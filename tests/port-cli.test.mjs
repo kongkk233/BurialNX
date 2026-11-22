@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { resolve } from 'node:path';
+import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { acceptHost } from '../tools/accept-host.mjs';
+import { verifyRuntimeProvenance } from '../tools/verify-runtime-provenance.mjs';
 import { acceptPackage } from '../tools/accept-package.mjs';
 import { validateProfileFile } from '../tools/validate-profile.mjs';
 import { checkPort, safeRelative } from '../tools/check-port.mjs';
@@ -26,6 +28,46 @@ test('generic package acceptance does not execute game scripts or require neutra
   assert.equal(result.runtimeBehavior, 'not-observed');
   assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);
   assert.match(result.evidence.save.roundTrip, /profile-saves\/file1\.generic$/);
+});
+
+test('runtime provenance recomputes repository file claims and exposes external boundaries', async () => {
+  const result = await verifyRuntimeProvenance({ project: resolve('.') });
+  assert.equal(result.status, 'pass');
+  assert.deepEqual(result.verified.map(claim => claim.claim), [
+    'runtime.patchSha256',
+    'runtime.timelinePatchSha256',
+    'runtime.prerollGzipSha256',
+  ]);
+  assert.ok(result.verified.every(claim => claim.status === 'pass'));
+  assert.ok(result.unverified.length > 0);
+  assert.ok(result.unverified.every(claim => claim.status === 'not-verified'));
+});
+
+test('runtime provenance rejects a tampered claim without changing the repository', async () => {
+  const temporary = await mkdtemp(resolve('.test-provenance-'));
+  try {
+    await mkdir(join(temporary, 'runtime'), { recursive: true });
+    await mkdir(join(temporary, 'patches'), { recursive: true });
+    for (const file of [
+      'runtime/manifest.json',
+      'runtime/nxjs-preroll.nro-code.gz',
+      'patches/nxjs-video-audio-preroll.patch',
+      'patches/nxjs-video-track-timeline.patch',
+    ]) {
+      const destination = join(temporary, file);
+      await cp(resolve(file), destination);
+    }
+    const manifestPath = join(temporary, 'runtime/manifest.json');
+    const manifest = JSON.parse((await readFile(manifestPath)).toString('utf8'));
+    manifest.patchSha256 = '0'.repeat(64);
+    await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
+    await assert.rejects(
+      verifyRuntimeProvenance({ project: temporary }),
+      /runtime\.patchSha256 mismatch/,
+    );
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
 });
 
 test('host acceptance executes media, save, and rollback behavior', async () => {

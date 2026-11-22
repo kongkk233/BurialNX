@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { checkVideoRuntime, pinnedCode } from './check-video-runtime.mjs';
 import { acceptHost } from './accept-host.mjs';
 import { acceptPackage } from './accept-package.mjs';
+import { verifyRuntimeProvenance } from './verify-runtime-provenance.mjs';
 
 const ASSET_HEADER_SIZE = 0x38;
 const NACP_TITLE_SIZE = 0x200;
@@ -99,6 +100,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   await checkVideoRuntime(buffer);
   const packageJson = JSON.parse(await readFile(resolve(project, 'package.json'), 'utf8'));
   const runtimeManifest = JSON.parse(await readFile(resolve(project, 'runtime/manifest.json'), 'utf8'));
+  const runtimeProvenance = await verifyRuntimeProvenance({ project, manifest: runtimeManifest });
   const nacp = nacpSummary(buffer, layout);
   const neutralFixture = resolve(project, 'tests/fixtures/neutral-mv/www');
   const modFixture = resolve(project, 'tests/fixtures/neutral-mv/mod');
@@ -122,6 +124,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
     gitDirty: gitStatus.length > 0,
     sourceTreeSha256: sourceTree,
     toolchain: { node: process.version, npm: command('npm', ['--version'], project), lockfileSha256: digest(lockfile) },
+    runtimeProvenance,
     artifacts: {
       nro: { path: relative(project, absoluteNro), kind: 'release', sha256: digest(buffer), bytes: buffer.byteLength, executableSha256: digest(buffer.subarray(0, layout.nroSize)) },
       runtimeExecutable: { sha256: digest(buffer.subarray(0, layout.nroSize)), expectedSha256: pinnedCode, source: 'computed from final NRO executable section' },
@@ -151,6 +154,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
     validation: {
       structural: 'pass',
       runtime: 'pass',
+      runtimeProvenance: runtimeProvenance.status,
       profile: hostAcceptance.checks.profile,
       packageAcceptance: packageAcceptance.status,
       portCheck: hostAcceptance.checks.entry === 'pass' && hostAcceptance.checks.scriptGraph === 'pass' ? 'pass' : 'fail',
