@@ -1,5 +1,5 @@
 import { assetPath, type Reader } from './library';
-import { gameAssetNames } from './game-assets';
+import { gameAssetNames, type AssetEnvelopePolicy } from './game-assets';
 import { safeSdPath } from './settings';
 
 /** Ordinary SD movies stream without loading the whole file into the JS heap. */
@@ -9,8 +9,67 @@ interface MovieFs {
         statSync(path: string): { mode: number; size?: number | bigint } | null;
         readFile(path: string, range: { start: number; end: number }): Promise<ArrayBuffer | null>;
 }
+export interface MoviePolicy {
+        extensionFallback?: readonly string[];
+        variantFallback?: readonly string[];
+        hashedLookup?: boolean;
+        envelope?: AssetEnvelopePolicy;
+}
+const defaultMoviePolicy: Required<Pick<MoviePolicy, 'extensionFallback' | 'variantFallback'>> = { extensionFallback: ['webm', 'mp4'], variantFallback: ['-l'] };
 const noop = () => {};
 const limit = 64 * 1024 * 1024;
+
+interface NormalizedMoviePolicy {
+        extensionFallback: string[];
+        variantFallback: string[];
+        hashedLookup: boolean;
+        envelope?: AssetEnvelopePolicy;
+}
+
+function normalizeMoviePolicy(policy: MoviePolicy | undefined): NormalizedMoviePolicy {
+        const input = policy ?? {};
+        const extensions = input.extensionFallback ?? defaultMoviePolicy.extensionFallback;
+        const variants = input.variantFallback ?? defaultMoviePolicy.variantFallback;
+        if (!Array.isArray(extensions) || extensions.some(value => typeof value !== 'string' || !value.trim())) {
+                throw new TypeError('Movie policy extensionFallback must be a non-empty string array');
+        }
+        if (!Array.isArray(variants) || variants.some(value => typeof value !== 'string' || !value || value.startsWith('.') || /[/\\]/.test(value) || /[\u0000-\u001f\u007f]/.test(value))) {
+                throw new TypeError('Movie policy variantFallback contains an unsafe filename variant');
+        }
+        const normalizedExtensions = [...new Set(extensions.map(value => value.replace(/^\./, '').toLowerCase()))];
+        if (normalizedExtensions.some(value => !/^[a-z0-9][a-z0-9._-]*$/i.test(value))) {
+                throw new TypeError('Movie policy extensionFallback contains an unsafe extension');
+        }
+        if (input.hashedLookup !== undefined && typeof input.hashedLookup !== 'boolean') {
+                throw new TypeError('Movie policy hashedLookup must be a boolean');
+        }
+        let envelope: AssetEnvelopePolicy | undefined;
+        if (input.envelope !== undefined) {
+                const candidate = input.envelope as Partial<AssetEnvelopePolicy> | null;
+                const magicBytes = typeof candidate?.magic === 'string' ? new TextEncoder().encode(candidate.magic) : null;
+                if (!candidate || !magicBytes?.length || magicBytes.length > 4096 || !/^[\x20-\x7e]+$/.test(candidate.magic!)
+                        || !Number.isInteger(candidate.headerBytes) || candidate.headerBytes < magicBytes.length || candidate.headerBytes > 4096
+                        || !Number.isInteger(candidate.lengthByteOffset) || candidate.lengthByteOffset < 0 || candidate.lengthByteOffset >= candidate.headerBytes
+                        || candidate.algorithm !== 'basename-xor-v1') {
+                        throw new TypeError('Movie policy envelope is invalid');
+                }
+                envelope = { magic: candidate.magic!, headerBytes: candidate.headerBytes!, lengthByteOffset: candidate.lengthByteOffset!, algorithm: 'basename-xor-v1' };
+        }
+        return {
+                extensionFallback: normalizedExtensions,
+                variantFallback: [...new Set(variants)],
+                hashedLookup: input.hashedLookup !== false,
+                ...(envelope ? { envelope } : {}),
+        };
+}
+
+function matchesEnvelope(prefix: Uint8Array, envelope: AssetEnvelopePolicy | undefined): boolean {
+        if (!envelope) return false;
+        const magic = new TextEncoder().encode(envelope.magic);
+        if (prefix.length < magic.length) return false;
+        for (let i = 0; i < magic.length; i++) if (prefix[i] !== magic[i]) return false;
+        return true;
+}
 
 /** Only for typed <source> candidates, not legacy game resources: FFmpeg can
  * mistake arbitrary ASCII for a one-frame CD+G file. A MIME hint is a promise
@@ -32,29 +91,47 @@ function checkContainer(b:Uint8Array, mime: string | undefined, size: number) {
         }
 }
 
-export function createMovieResolver(assets: Reader, roots: readonly string[] = [], fs: MovieFs | undefined = (globalThis as any).Switch, decodeFromBuffer = false): MovieResolver {
+export function createMovieResolver(assets: Reader, roots: readonly string[] = [], fs: MovieFs | undefined = (globalThis as any).Switch, decodeFromBuffer = false, policy: MoviePolicy = {}): MovieResolver {
+        const mediaPolicy = normalizeMoviePolicy(policy);
         return async (src, exact=false, mime) => {
                 // Existing Blob URLs are owned by the caller, not by this layer.
                 if (/^blob:/i.test(src)) return { url: src, release: noop };
                 const relative = src.split(/[?#]/, 1)[0].replace(/^(?:game|romfs):\/(?!\/)/i, '').replace(/^\.\//, '');
                 if (!assetPath(relative)) throw new Error('Invalid local movie path');
                 const local = roots.filter(safeSdPath);
-                // MV selects one extension using a MIME probe, even when only the other
-                // version was shipped. Try the sibling ONLY if absent, not if corrupt.
+                // Preserve the original resolver contract: requested basename first,
+                // then same-basename extension siblings. Configured filename variants
+                // are additive fallback candidates and never outrank a sibling file.
                 const candidates = [relative];
-                if (!exact && /\.webm$/i.test(relative)) candidates.push(relative.replace(/\.webm$/i,'.mp4'));
-                else if (!exact && /\.mp4$/i.test(relative)) candidates.push(relative.replace(/\.mp4$/i,'.webm'));
+                if (!exact) {
+                        const match = /^(.*?)(\.[^./]+)$/.exec(relative);
+                        if (match) {
+                                const stem = match[1];
+                                const extension = match[2].slice(1).toLowerCase();
+                                const extensions = [extension, ...mediaPolicy.extensionFallback].filter((value, index, all) => all.indexOf(value) === index);
+                                for (const ext of extensions.slice(1)) candidates.push(`${stem}.${ext}`);
+                                for (const variant of mediaPolicy.variantFallback) {
+                                        for (const ext of extensions) {
+                                                const candidate = `${stem}${variant}.${ext}`;
+                                                if (!candidates.includes(candidate)) candidates.push(candidate);
+                                        }
+                                }
+                        }
+                }
                 let readPaths = candidates;
                 if (fs && local.length) {
-                        const variants = await Promise.all(candidates.map(gameAssetNames));
+                        const variants = mediaPolicy.hashedLookup
+                                ? await Promise.all(candidates.map(gameAssetNames))
+                                : candidates.map((candidate) => [candidate]);
                         outer: for (const root of local) for (const [i,names] of variants.entries()) for (const name of names) {
                                 const path = `${root.replace(/\/+$/, '')}/${name}`;
                                 const stat = fs.statSync(path);
                                 if (!stat || (stat.mode & 0o170000) !== 0o100000) continue;
-                                const header = await fs.readFile(path, { start: 0, end: mime ? 8 : 7 });
+                                const headerEnd = mediaPolicy.envelope ? Math.max(7, mediaPolicy.envelope.headerBytes) : (mime ? 8 : 7);
+                                const header = await fs.readFile(path, { start: 0, end: headerEnd });
                                 if (!header?.byteLength) throw new Error(`Movie header is missing or empty: ${candidates[i]}`);
                                 const prefix = new Uint8Array(header);
-                                const wrapped = prefix.length >= 7 && prefix[0] === 84 && prefix[1] === 67 && prefix[2] === 79 && prefix[3] === 65 && prefix[4] === 65 && prefix[5] === 76;
+                                const wrapped = matchesEnvelope(prefix, mediaPolicy.envelope);
                                 // beta.7 opens decodeURI(URL.href). If this does not round-trip
                                 // (e.g. '#' in a file name), use the existing Reader instead.
                                 if (!wrapped) checkContainer(prefix,mime,Number(stat.size ?? 0));
@@ -83,6 +160,6 @@ export function createMovieResolver(assets: Reader, roots: readonly string[] = [
  * Do not pass sdmc: to it: the game's resource bridge intentionally rejects
  * arbitrary schemes. Use our selected game/mod Reader, cap size, use an owned
  * Blob URL and revoke it as soon as the native decoder owns the PCM. */
-export function createAudioResolver(assets:Reader, roots:readonly string[]=[], fs:MovieFs|undefined=(globalThis as any).Switch):MovieResolver {
-        return createMovieResolver(assets,roots,fs,true);
+export function createAudioResolver(assets:Reader, roots:readonly string[]=[], fs:MovieFs|undefined=(globalThis as any).Switch, policy: MoviePolicy = {}):MovieResolver {
+        return createMovieResolver(assets,roots,fs,true,policy);
 }

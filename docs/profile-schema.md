@@ -1,0 +1,9 @@
+# Port Profile schema
+
+A Port Profile is versioned JSON describing the minimum contract between the loader and an RPG Maker MV/NW.js package. The canonical JSON Schema is [`../profiles/schema.json`](../profiles/schema.json); TypeScript callers should use `parsePortProfile` from `src/port-profile.ts` for strict validation and normalized defaults.
+
+Required sections are `runtime`, `entry`, `compat`, `save`, and `package`; `assets` and `media` are optional and receive safe defaults. `assets.hashedLookup` controls the profile's short hashed-name fallback. `assets.envelope` is an explicit, versioned in-memory decoder contract (`basename-xor-v1`) and must only be used when the package owner can document that format. Version `1` defaults media extension fallback to MP4/WebM siblings and variant fallback to `-l`. Profiles are game-neutral: do not encode title IDs, private SD paths, or redistributed game content.
+
+`entry.html` is the active launcher input: the loader reads it and follows its ordered local `<script src>` tags. `entry.script` is validated as a safe relative path for forward-compatible profile metadata, but version 1 does not inject or reorder it; do not rely on that field to load a script. Likewise, `runtime`, `compat`, `save`, and `package` are validated contracts and metadata in this phase; `runtime.kind` is included in diagnostics, but these fields do not yet change the compatibility shim or save naming. The v1 launcher wiring that changes behavior is `entry.html`, `assets`, and `media`; all other fields are deliberately honest forward-compatible contracts.
+
+Unknown future fields should be rejected by the current schema until a profile version explicitly defines them. The phase-one launcher does not require a profile, so existing installations remain compatible.

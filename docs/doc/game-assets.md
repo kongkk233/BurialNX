@@ -1,11 +1,11 @@
 # `game-assets.ts`
 
-Provides the asset-reading layer the game runtime sees: maps a logical asset path to its on-disk location(s), decodes the game's lightweight `TCOAAL` header/XOR envelope in memory (never modifying the original SD file), and wraps the raw disk `Reader` in a small bounded LRU cache plus a request-coalescing layer for simultaneous image/data reads. The game stores some files under a short SHA-256 hash of their normal path, so the resolver tries the plain name first (letting an unpacked mod replace an individual asset) and falls back to the hashed name.
+Provides the asset-reading layer the game runtime sees: maps a logical asset path to its on-disk location(s), optionally decodes a profile-selected envelope in memory (never modifying the original SD file), and wraps the raw disk `Reader` in a small bounded LRU cache plus a request-coalescing layer for simultaneous image/data reads. Profiles may enable short SHA-256 asset-name fallback; the resolver always tries the plain name first so an unpacked mod can replace an individual asset.
 
 ## `gameAssetNames`
 
 > /**
->  * TCOAAL stores some files under a short hash of their normal path. Plain
+>  * A profile may store files under a short hash of their normal path. Plain
 >  * files are tried first so an unpacked mod can replace an individual asset.
 >  */
 
@@ -16,7 +16,7 @@ Provides the asset-reading layer the game runtime sees: maps a logical asset pat
 
 ## `unpackGameAsset`
 
-> /** Decode the game's small file header in memory; never modify the SD file. */
+> /** Decode an optional profile-selected file envelope in memory; never modify the SD file. */
 
 ## `gameAssets`
 

@@ -2,12 +2,14 @@
   "name": "burialnx",
   "version": "0.1.6-cg.6",
   "private": true,
-  "description": "Independent Switch homebrew loader for TCOAAL",
+  "description": "BurialNX Port Kit: native Nintendo Switch infrastructure for RPG Maker MV/NW.js games",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "build": "node tools/build.mjs",
+    "typecheck": "node tools/typecheck.mjs",
     "test": "node tools/test.mjs",
+    "verify:release": "npm test && npm run typecheck && npm run build && node tools/release-manifest.mjs && node tools/verify-release.mjs",
     "test:movie:browser": "node tools/test-video-browser.mjs",
     "test:movie:native": "node tools/test-video-native.mjs",
     "smoke": "node tools/smoke.mjs"
@@ -20,8 +22,10 @@
   },
   "devDependencies": {
     "@nx.js/nro": "1.0.0-beta.7",
+    "@types/node": "22.15.21",
     "esbuild": "0.25.12",
     "jpeg-js": "0.4.4",
-    "pngjs": "7.0.0"
+    "pngjs": "7.0.0",
+    "typescript": "5.8.3"
   }
 }

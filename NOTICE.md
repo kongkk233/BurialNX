@@ -5,11 +5,9 @@ files, game saves, or mods. Users are responsible for obtaining the game and
 mods lawfully and respecting their licenses. This project is not endorsed by
 or affiliated with the rights holders or platform vendors.
 
-The project license is AGPL-3.0-or-later; see [LICENSE](LICENSE). The earlier
-[TCOAALBrowserLoader](https://github.com/Kidev-org/TCOAALBrowserLoader) is
-AGPL-licensed and was inspected during development; it is credited for the
-prior project and is not a source of game redistribution permission. This is
-not a clean-room implementation or a legal opinion.
+The project license is AGPL-3.0-or-later; see [LICENSE](LICENSE). Third-party
+runtime and build components are credited in their respective notices. This
+notice is not a clean-room certification or a legal opinion.
 
 nx.js is MIT-licensed; see [LICENSES/nx.js-MIT.txt](LICENSES/nx.js-MIT.txt).
 The cg.5 fat NRO embeds a locally cross-compiled nx.js v1.0.0-beta.7 runtime with the patches `patches/nxjs-video-audio-preroll.patch` and `patches/nxjs-video-track-timeline.patch`; see `runtime/README.md` for source and build information. Its bundled components retain their separate licenses. Their

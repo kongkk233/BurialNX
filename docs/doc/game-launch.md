@@ -40,8 +40,8 @@ S.gameStopped = false; // reset for new game launch
 
 ```
 // Reset the progress bar for a fresh launch. The title is the game's
-// display name when known (so the bar shows "The Coffin of Andy and
-// Leyley" instead of just "BurialNX"), falling back to the loader name.
+// display name when known (so the bar shows the selected game instead of
+// just "BurialNX"), falling back to the loader name.
 ```
 
 ## `launch()` — realm snapshot (`beginGameSession`)

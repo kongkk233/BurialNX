@@ -1,4 +1,12 @@
 import { assetPath, type Reader } from './library';
+import type { AssetEnvelopeProfile } from './port-profile';
+
+export type AssetEnvelopePolicy = AssetEnvelopeProfile;
+
+export interface AssetPolicy {
+        hashedLookup?: boolean;
+        envelope?: AssetEnvelopePolicy;
+}
 
 /** Resolve the on-disk path(s) for an asset, trying plain names first then the hashed name. */
 export async function gameAssetNames(path: string): Promise<string[]> {
@@ -17,12 +25,27 @@ async function namesForSafePath(safe: string): Promise<string[]> {
         return [...new Set([safe, withoutExtension, parts.join('/')])];
 }
 
-/** Decode the game's small file header in memory; never modify the SD file. */
-export function unpackGameAsset(buffer: ArrayBuffer, path: string): ArrayBuffer {
+function hasMagic(input: Uint8Array, magic: string): boolean {
+        const expected = new TextEncoder().encode(magic);
+        if (input.length < expected.length) return false;
+        for (let i = 0; i < expected.length; i++) if (input[i] !== expected[i]) return false;
+        return true;
+}
+
+/**
+ * Decode an optional profile-selected asset envelope in memory; never modify
+ * the SD file. With no policy, bytes are returned unchanged for ordinary MV
+ * packages. The algorithm is intentionally named and versioned so a profile
+ * cannot silently select an arbitrary decoder.
+ */
+export function unpackGameAsset(buffer: ArrayBuffer, path: string, policy?: AssetEnvelopePolicy): ArrayBuffer {
         const input = new Uint8Array(buffer);
-        if (input.length < 7 || String.fromCharCode(...input.subarray(0, 6)) !== 'TCOAAL') return buffer;
-        const output = input.slice(7);
-        const limit = Math.min(input[6] || output.length, output.length);
+        if (!policy || policy.algorithm !== 'basename-xor-v1') return buffer;
+        if (!policy.magic || policy.headerBytes < policy.magic.length || policy.headerBytes > input.length
+                || !Number.isInteger(policy.lengthByteOffset) || policy.lengthByteOffset < 0
+                || policy.lengthByteOffset >= policy.headerBytes || !hasMagic(input, policy.magic)) return buffer;
+        const output = input.slice(policy.headerBytes);
+        const limit = Math.min(input[policy.lengthByteOffset] || output.length, output.length);
         let key = 0;
         for (const c of path.split('/').pop()!.toUpperCase()) key = ((key << 1) ^ c.charCodeAt(0)) & 255;
         key = (key + 1) & 255;
@@ -35,9 +58,10 @@ export function unpackGameAsset(buffer: ArrayBuffer, path: string): ArrayBuffer 
 }
 
 /** Small bounded cache for repeated images and map data, not large audio. */
-export function gameAssets(game: string, mod: string | null, disk: Reader, budget = 16 * 1024 * 1024): Reader {
+export function gameAssets(game: string, mod: string | null, disk: Reader, budget = 16 * 1024 * 1024, policy: AssetPolicy = {}): Reader {
         const memory = new Map<string, ArrayBuffer>();
         const pending = new Map<string, { request: Promise<ArrayBuffer | null>; shared: boolean }>();
+        const hashedLookup = policy.hashedLookup !== false;
         let size = 0;
         const roots = [mod, game].filter((root): root is string => !!root).map((root) => root.replace(/\/+$/, ''));
         async function resolve(safe: string): Promise<ArrayBuffer | null> {
@@ -47,7 +71,7 @@ export function gameAssets(game: string, mod: string | null, disk: Reader, budge
                                 const name = candidates[i];
                                 const bytes = await disk.read(`${root}/${name}`);
                                 if (bytes !== null) {
-                                        const result = unpackGameAsset(bytes, name);
+                                        const result = unpackGameAsset(bytes, name, policy.envelope);
                                         if (/^(data|img)\//i.test(safe) && result.byteLength > 0 && result.byteLength <= Math.min(budget, 2 * 1024 * 1024)) {
                                                 const previous = memory.get(safe);
                                                 if (previous) { size -= previous.byteLength; memory.delete(safe); }
@@ -59,7 +83,7 @@ export function gameAssets(game: string, mod: string | null, disk: Reader, budge
                                         }
                                         return result;
                                 }
-                                if (i === candidates.length - 1) {
+                                if (hashedLookup && i === candidates.length - 1) {
                                         const hashed = (await namesForSafePath(safe)).at(-1)!;
                                         if (!candidates.includes(hashed)) candidates.push(hashed);
                                 }

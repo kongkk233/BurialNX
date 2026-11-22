@@ -2,7 +2,7 @@
 
 **Independent Switch homebrew loader for RPG Maker MV Games**
 
-BurialNX is a Nintendo Switch homebrew application built on [nx.js](https://github.com/tofuness/nx.js) that runs RPG Maker MV games on the Switch. It is not a general-purpose RPG Maker player — it is specifically tested on *The Coffin of Andy and Leyley* (TCOAAL).
+BurialNX is a Nintendo Switch homebrew application and **BurialNX Port Kit** for RPG Maker MV/NW.js games. The port contract is expressed through a validated, game-neutral Port Profile; the repository contains no commercial game assets. See the [porting guide](docs/porting-guide.md) to adapt a legally obtained game package.
 
 ---
 
@@ -19,7 +19,6 @@ This local fork of v0.1.6 connects MV's `GameVideo` to the pinned nx.js native v
 ## 📸 Screenshots
 
 ### Library
-![Library](docs/screenshots/library.jpg)
 
 Browse your game library with cover thumbnails. Reorder games with **L/R** shoulder buttons.
 
@@ -89,6 +88,18 @@ Options are fully translated — Always Dash, BGM/SFX Volume, On/Off — using t
 
 ---
 
+## 🧰 Port Kit commands
+
+```bash
+npm ci
+npm test                 # host regression tests; not hardware validation
+npm run typecheck        # production TypeScript module/bundle boundary
+npm run build            # release NRO
+npm run verify:release   # tests + typecheck + build + release-manifest.json
+```
+
+Profiles are described by [`profiles/schema.json`](profiles/schema.json), with a neutral example at [`profiles/examples/minimal-mv.json`](profiles/examples/minimal-mv.json). `createMovieResolver` accepts profile-derived media policy while retaining the default MP4/WebM and `-l` fallback behavior when no profile is supplied.
+
 ## 🚀 Installation
 
 ### Requirements
@@ -149,4 +160,4 @@ This repo includes a manual build workflow. Go to **Actions → "Build NRO" → 
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE).
 
-BurialNX is an independent homebrew project. It is not affiliated with or endorsed by the creators of The Coffin of Andy and Leyley. All game content belongs to their respective owners.
+BurialNX is an independent homebrew project. It is not affiliated with or endorsed by any game creator or platform vendor. All game content belongs to its respective owner.

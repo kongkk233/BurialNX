@@ -11,7 +11,7 @@ Minimal ICO and PE-icon readers used to derive a game cover image from a `.ico` 
 > PNG in memory because nx.js does not expose a BMP decoder.
 >
 > The readers are intentionally narrow: they only need to handle the icon
-> shapes that real-world TCOAAL-style deployments ship (32-bit BGRA BMP icons
+> shapes that real-world game deployments ship (32-bit BGRA BMP icons
 > and PNG-embedded modern icons). They reject anything they cannot handle
 > rather than guessing, so the library UI can fall back to a placeholder.
 > ```

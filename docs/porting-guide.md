@@ -1,0 +1,23 @@
+# Porting guide
+
+BurialNX Port Kit targets legally obtained RPG Maker MV/NW.js game packages. A port input must be a game package the operator is allowed to run, with its own `index.html`, JavaScript, data, image/audio/video assets, and save directory. Do not put commercial assets, private SD paths, saves, keys, or title identifiers in this repository.
+
+## Workflow
+
+1. Copy the permitted game package into a local staging directory outside this source tree.
+2. Create a profile from `profiles/examples/minimal-mv.json` and validate it with `parsePortProfile`.
+3. Set the entry HTML, runtime compatibility, save extension, and media policy. Keep paths relative and use forward slashes.
+4. Run `npm test`, `npm run typecheck`, and `npm run build`.
+5. Test the resulting NRO with neutral media fixtures before testing the target game.
+
+The profile API is intentionally additive in phase one. Existing launch behavior remains the default when no profile is supplied. In v1, `entry.html`, `assets`, and `media` drive launch behavior; `entry.script`, `runtime`, `compat`, `save`, and `package` are validated metadata and are not silently treated as runtime overrides. The selected mod profile wins over the base game profile, and the control file is read directly rather than through hashed asset lookup or envelope decoding.
+
+## Assets and media
+
+`assets.hashedLookup` controls whether the reader probes the package's short hashed filename after plain and extensionless names. Plain names always win, so a mod overlay can replace one asset without rewriting the base package. If a package uses a documented wrapper, `assets.envelope` selects the named `basename-xor-v1` decoder with its magic, header size, and length-byte offset; decoding is in memory only and the original SD file is never rewritten. Do not invent or copy a commercial game's private format into the kit—keep the decoder parameters in that game's local profile.
+
+The media resolver protects local paths, checks container headers when a MIME hint is supplied, and preserves Blob URL ownership and SD streaming semantics. A policy may list extension fallbacks (`webm`, `mp4`) and filename variants such as `-l`; variants never contain path separators. A missing candidate may fall back, but a present corrupt file is not silently bypassed. The media resolver receives the same hashed/envelope asset policy as the game reader.
+
+## Validation layers
+
+Host tests cover deterministic logic and fixtures. Browser tests cover DOM/media behavior where available. Native tests cover the Switch runtime and decoder. Hardware playback requires a physical console, known build, permitted game package, and operator observations; `npm test` is not hardware validation.

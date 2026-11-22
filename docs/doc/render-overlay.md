@@ -107,7 +107,7 @@ Three modal-style overlay renderers (pause menu, quit dialog, notice popup) that
 
 ## `renderNoticePopup` — path splitting
 > Split by whitespace, but also break long paths at '/' so a single
-> path like sdmc:/switch/The_Coffin_of_Andy_and_Leyley/The_Coffin_of_Andy_and_Leyley.nro
+> path like sdmc:/switch/Sample_MV_Game/Sample_MV_Game.nro
 > wraps across multiple lines instead of overflowing.
 
 ## `renderNoticePopup` — chunk break

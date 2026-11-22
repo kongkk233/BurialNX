@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://burialnx.example/schema/port-profile-1.json",
+  "title": "BurialNX Port Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "id", "runtime", "entry", "compat", "save", "package"],
+  "properties": {
+    "version": { "const": 1 },
+    "id": { "type": "string", "minLength": 1, "pattern": "^[^\\u0000-\\u001f\\u007f\\u2028\\u2029\\/:]+$" },
+    "runtime": {
+      "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": { "kind": { "enum": ["nwjs", "browser"] }, "version": { "type": "string", "minLength": 1, "$ref": "#/$defs/safeText" } }
+    },
+    "entry": {
+      "type": "object", "additionalProperties": false, "required": ["html"],
+      "properties": {
+        "html": { "type": "string", "minLength": 1, "$ref": "#/$defs/relativePath" },
+        "script": { "type": "string", "minLength": 1, "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "compat": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "mv": { "type": "boolean" }, "nwjs": { "type": "boolean" }, "node": { "type": "boolean" } }
+    },
+    "assets": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "hashedLookup": { "type": "boolean" },
+        "envelope": {
+          "type": "object", "additionalProperties": false,
+          "required": ["magic", "headerBytes", "lengthByteOffset", "algorithm"],
+          "properties": {
+            "magic": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[\\x20-\\x7e]+$" },
+            "headerBytes": { "type": "integer", "minimum": 1, "maximum": 4096 },
+            "lengthByteOffset": { "type": "integer", "minimum": 0, "maximum": 4095 },
+            "algorithm": { "const": "basename-xor-v1" }
+          }
+        }
+      }
+    },
+    "media": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "extensionFallback": { "type": "array", "items": { "type": "string", "minLength": 1, "pattern": "^\\.?[A-Za-z0-9][A-Za-z0-9._-]*$" } },
+        "variantFallback": { "type": "array", "items": { "type": "string", "minLength": 1, "pattern": "^[^/\\\\.][^/\\\\\\u0000-\\u001f\\u007f\\u2028\\u2029]*$" } }
+      }
+    },
+    "save": {
+      "type": "object", "additionalProperties": false, "required": ["directory", "extension"],
+      "properties": {
+        "directory": { "type": "string", "minLength": 1, "$ref": "#/$defs/relativePath" },
+        "extension": { "type": "string", "minLength": 1, "pattern": "^\\.?[A-Za-z0-9][A-Za-z0-9._-]*$" }
+      }
+    },
+    "package": {
+      "type": "object", "additionalProperties": false, "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "$ref": "#/$defs/safeText" },
+        "version": { "type": "string", "minLength": 1, "$ref": "#/$defs/safeText" }
+      }
+    }
+  },
+  "$defs": {
+    "safeText": { "pattern": "^[^\\u0000-\\u001f\\u007f\\u2028\\u2029]+$" },
+    "relativePath": { "pattern": "^(?!/)(?!.*\\\\)(?!.*:)(?!.*(^|/)\\.{1,2}(/|$))(?!.*[\\u0000-\\u001f\\u007f\\u2028\\u2029]).+$" }
+  }
+}

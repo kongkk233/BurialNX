@@ -59,8 +59,8 @@ test('plain mod movie streams ahead of the base, reads only its header, handles 
         const resolve=createMovieResolver({async read(){full++;return null;}},['sdmc:/mod','sdmc:/game'],fs);const s=await resolve('./movies/A%20B.webm?rev=2');assert.equal(s.url,'sdmc:/mod/movies/A%20B.webm');assert.equal(full,0);assert.equal(hits.length,1);s.release();
 });
 test('wrapped mod movie uses the normal game reader and revocable blob, never falls back to a plain base',async()=>{
-        let read=0;const fs={statSync(){return{mode:0o100644,size:20};},async readFile(){return new TextEncoder().encode('TCOAAL\u0001').buffer;}};
-        const r=createMovieResolver({async read(p){read++;assert.equal(p,'movies/a.mp4');return new Uint8Array([5,4,3,2]).buffer;}},['sdmc:/mod','sdmc:/game'],fs);
+        let read=0;const fs={statSync(){return{mode:0o100644,size:20};},async readFile(){return new TextEncoder().encode('BNXENC\u0001').buffer;}};
+        const r=createMovieResolver({async read(p){read++;assert.equal(p,'movies/a.mp4');return new Uint8Array([5,4,3,2]).buffer;}},['sdmc:/mod','sdmc:/game'],fs,false,{hashedLookup:false,envelope:{magic:'BNXENC',headerBytes:7,lengthByteOffset:6,algorithm:'basename-xor-v1'}});
         const s=await r('movies/a.mp4');assert.equal(read,1);assert.ok(s.url.startsWith('blob:'));assert.deepEqual([...new Uint8Array(await (await fetch(s.url)).arrayBuffer())],[5,4,3,2]);s.release();s.release();await assert.rejects(fetch(s.url));
 });
 test('resolver refuses arbitrary URLs and traversal; a missing asset never becomes playable',async()=>{
@@ -79,7 +79,7 @@ test('a same-name MP4-only mod overrides the base WebM selected by the MV MIME p
         const r=createMovieResolver({async read(){throw Error('expected direct streaming');}},['sdmc:/mod','sdmc:/game'],fs);assert.equal((await r('movies/scene.webm')).url,'sdmc:/mod/movies/scene.mp4');
 });
 test('oversize packed movie is refused BEFORE a full read, without falling through to the base',async()=>{
-        let calls=0;const r=createMovieResolver({async read(){calls++;return null;}},['sdmc:/mod','sdmc:/game'],{statSync(){return{mode:0o100644,size:70*1024*1024};},async readFile(){return new TextEncoder().encode('TCOAAL\x00').buffer;}});await assert.rejects(r('movies/intro.mp4'),/64 MiB/);assert.equal(calls,0);
+        let calls=0;const r=createMovieResolver({async read(){calls++;return null;}},['sdmc:/mod','sdmc:/game'],{statSync(){return{mode:0o100644,size:70*1024*1024};},async readFile(){return new TextEncoder().encode('BNXENC\x00').buffer;}},false,{hashedLookup:false,envelope:{magic:'BNXENC',headerBytes:7,lengthByteOffset:6,algorithm:'basename-xor-v1'}});await assert.rejects(r('movies/intro.mp4'),/64 MiB/);assert.equal(calls,0);
 });
 for(const direct of [true,false])test(`actual BrowserHost (${direct?'direct':'offscreen'} canvas): movie last, even without a game redraw; post-ended scene restored`,async()=>{
         const g=globalThis as any,names=['screen','Video','OffscreenCanvas','document','XMLHttpRequest','HTMLElement','HTMLCanvasElement','HTMLVideoElement','HTMLSourceElement','HTMLAudioElement','Audio','location','innerWidth','innerHeight','devicePixelRatio','fetch','Image','moveBy','moveTo','resizeBy','resizeTo','focus','blur','close'];

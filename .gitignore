@@ -4,6 +4,8 @@ romfs/main.js.map
 *.nro
 *.nsp
 *.log
+# Generated per-build provenance; uploaded with release artifacts, not committed
+release-manifest.json
 .DS_Store
 Game/
 games/

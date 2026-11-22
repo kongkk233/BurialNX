@@ -333,16 +333,16 @@ test('rename seeds the software keyboard with the current name and ignores Plus 
   assert.ok(ui.labels.some((l) => l === 'www'), 'the preview field shows the current name before typing');
   // Live typing: each keypress updates the preview with the keyboard's
   // current text and caret position.
-  vk.press('Coffin', 6);
+  vk.press('Sample', 6);
   await ui.tick();
-  assert.ok(ui.labels.some((l) => l === 'Coffin'), 'the preview field tracks the typed text live');
-  vk.press('Coffin of A', 11);
+  assert.ok(ui.labels.some((l) => l === 'Sample'), 'the preview field tracks the typed text live');
+  vk.press('Sample of A', 11);
   await ui.tick();
-  assert.ok(ui.labels.some((l) => l === 'Coffin of A'), 'the preview keeps updating on every keypress');
+  assert.ok(ui.labels.some((l) => l === 'Sample of A'), 'the preview keeps updating on every keypress');
   assert.ok(ui.labels.some((l) => l.includes('11/64')), 'the character counter reflects the live text');
   vk.moveCursor(4);
   await ui.tick();
-  assert.ok(ui.labels.some((l) => l === 'Coffin of A'), 'cursor moves keep the text visible');
+  assert.ok(ui.labels.some((l) => l === 'Sample of A'), 'cursor moves keep the text visible');
   // Pressing + while typing must NOT open the quit confirmation.
   await ui.tick([9]);
   assert.ok(!ui.labels.some((l) => l.includes('Press Plus')), 'Plus during keyboard input does not ask to quit');

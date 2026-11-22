@@ -64,6 +64,9 @@ try {
 
   const movieResult = await build({ ...sharedBuildOptions, entryPoints: ['tests/video.test.ts'] });
   await import(`data:text/javascript;base64,${Buffer.from(movieResult.outputFiles[0].contents).toString('base64')}`);
+
+  const portKitResult = await build({ ...sharedBuildOptions, entryPoints: ['tests/port-kit.test.ts'] });
+  await import(`data:text/javascript;base64,${Buffer.from(portKitResult.outputFiles[0].contents).toString('base64')}`);
   await import('../tests/icon.test.mjs');
   await import('../tests/ui-flow.test.mjs');
   await import('../tests/library.test.mjs');

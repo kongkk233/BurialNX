@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "id": "minimal-mv",
+  "runtime": { "kind": "nwjs", "version": "0.29.x" },
+  "entry": { "html": "index.html", "script": "js/main.js" },
+  "compat": { "mv": true, "nwjs": true, "node": true },
+  "assets": { "hashedLookup": true },
+  "media": { "extensionFallback": ["webm", "mp4"], "variantFallback": ["-l"] },
+  "save": { "directory": "save", "extension": ".rpgsave" },
+  "package": { "name": "example-mv-port", "version": "1.0.0" }
+}

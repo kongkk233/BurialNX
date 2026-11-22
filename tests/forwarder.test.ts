@@ -230,8 +230,8 @@ test('forwarderPathFor produces the expected SD path (subfolder per game, no spa
         assert.equal(fwd.forwarderPathFor('My Game', 'g1abc23'), 'sdmc:/switch/My_Game/My_Game.nro');
         // Special characters are stripped; spaces → underscores.
         assert.equal(fwd.forwarderPathFor('Game: Rebirth!', 'g2def45'), 'sdmc:/switch/Game_Rebirth/Game_Rebirth.nro');
-        // Multi-word game names (e.g. "The Coffin of Andy and Leyley").
-        assert.equal(fwd.forwarderPathFor('The Coffin of Andy and Leyley', 'g3abc'), 'sdmc:/switch/The_Coffin_of_Andy_and_Leyley/The_Coffin_of_Andy_and_Leyley.nro');
+        // Multi-word game names remain safe and deterministic.
+        assert.equal(fwd.forwarderPathFor('Sample MV Game Deluxe', 'g3abc'), 'sdmc:/switch/Sample_MV_Game_Deluxe/Sample_MV_Game_Deluxe.nro');
         // Empty name falls back to the game id.
         assert.equal(fwd.forwarderPathFor('', 'g3ghi78'), 'sdmc:/switch/g3ghi78/g3ghi78.nro');
 });
