@@ -138,11 +138,24 @@ test('require("fs") unlink removes only the overlay copy', () => {
         assert.deepEqual(sw.removed, [`${overlayBaseFor(GAME)}/cfg.json`]);
 });
 
-test('require("fs") rejects paths outside the app root', () => {
-        const sw = fakeSwitch();
+test('require("fs") rejects relative traversal and absolute SD paths outside the app root', () => {
+        const sw = fakeSwitch({ 'sdmc:/switch/burialnx/private.json': '{"private":true}' });
         const r = fresh(sw);
         const fs = r.require('fs');
         assert.throws(() => fs.writeFileSync('../escape.json', 'x'), /EPERM/);
+        assert.throws(() => fs.readFileSync('sdmc:/switch/burialnx/private.json'), /EPERM/);
+        assert.throws(() => fs.statSync('sdmc:/switch/burialnx/private.json'), /EPERM/);
+        assert.throws(() => fs.readdirSync('sdmc:/switch/burialnx'), /EPERM/);
+        assert.throws(() => fs.unlinkSync('sdmc:/switch/burialnx/private.json'), /EPERM/);
+        assert.equal(fs.existsSync('sdmc:/switch/burialnx/private.json'), false);
+        assert.deepEqual(sw.removed, []);
+});
+
+test('require("fs") permits an absolute path inside the app root', () => {
+        const sw = fakeSwitch({ [`${APPROOT}/orig.json`]: '{"orig":true}' });
+        const r = fresh(sw);
+        const fs = r.require('fs');
+        assert.equal(fs.readFileSync(`${APPROOT}/orig.json`, 'utf8'), '{"orig":true}');
 });
 
 test('require("fs") works without a Switch (in-memory fallback)', () => {

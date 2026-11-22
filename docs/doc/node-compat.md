@@ -40,7 +40,9 @@
 > Resolve a (possibly relative, possibly URL-like) fs path against the NW.js
 > app root and return an absolute `sdmc:/` path, or `null` if the path is
 > unsafe (traversal, unsupported scheme, empty). Backslashes are accepted
-> (NW.js games ported from Windows use them) and normalized.
+> (NW.js games ported from Windows use them) and normalized. This exported
+> helper is a normalizer; the installed `fs` shim applies the final app-root
+> boundary before touching Switch storage.
 
 ### `resolveFsPath` — file:// / nwjs:// / nw:// URL handling
 > file://, nwjs:// or nw:// URLs → the path part is absolute; map it to an
@@ -79,9 +81,13 @@
 
 ### `makeFs.resolve` — path validation rationale
 > Resolve a raw user-supplied path to an absolute `sdmc:/` path under the
-> app root. Returns null for unsafe/traversal paths. Every fs method runs
-> its argument through this first — `Switch.readFileSync` etc. expect
-> absolute sdmc paths, not the relative strings RPG Maker plugins pass.
+> app root and overlay subtrees. A crafted `..` path or an absolute SD path
+> outside the selected app root is rejected with `EPERM`. The exported
+> `resolveFsPath()` helper performs normalization; the fs shim applies this
+> additional app-root boundary before every read, stat, directory, unlink,
+> or write operation. Every fs method runs its argument through this first —
+> `Switch.readFileSync` etc. expect absolute sdmc paths, not the relative
+> strings RPG Maker plugins pass.
 
 ### `makeFs.ensureOverlay` — trailing catch
 > may already exist

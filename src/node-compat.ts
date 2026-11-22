@@ -370,7 +370,11 @@ function makeFs(switchFs: SwitchFs | null, opts: NodeCompatOptions) {
 
         const resolve = (raw: string): string => {
                 const r = resolveFsPath(gameRoot, raw);
-                if (r === null) { const e: any = new Error(`EPERM: path outside app root '${raw}'`); e.code = 'EPERM'; throw e; }
+                if (r === null || relFromAppRoot(gameRoot, r) === null) {
+                        const e: any = new Error(`EPERM: path outside app root '${raw}'`);
+                        e.code = 'EPERM';
+                        throw e;
+                }
                 return r;
         };
         const overlayPathFor = (resolved: string): string | null => {
