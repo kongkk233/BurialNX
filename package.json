@@ -28,6 +28,7 @@
   "devDependencies": {
     "@nx.js/nro": "1.0.0-beta.7",
     "@types/node": "22.15.21",
+    "ajv": "8.20.0",
     "esbuild": "0.25.12",
     "jpeg-js": "0.4.4",
     "pngjs": "7.0.0",

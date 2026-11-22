@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { resolve } from 'node:path';
 import { acceptHost } from '../tools/accept-host.mjs';
+import { validateProfileFile } from '../tools/validate-profile.mjs';
 import { checkPort, safeRelative } from '../tools/check-port.mjs';
 import { profileApi } from '../tools/validate-profile.mjs';
 
@@ -38,6 +39,12 @@ test('port checker path helper rejects traversal and external URLs', () => {
   assert.equal(safeRelative('../outside'), null);
   assert.equal(safeRelative('https://example.invalid/file'), null);
   assert.equal(safeRelative('/absolute/file'), null);
+});
+
+test('profile CLI applies the canonical JSON Schema and production parser', async () => {
+  const result = await validateProfileFile(resolve('profiles/examples/minimal-mv.json'));
+  assert.equal(result.profile.id, 'minimal-mv');
+  assert.equal(result.profile.entry.script, 'js/main.js');
 });
 
 test('profile CLI uses the production parser for invalid profiles', async () => {

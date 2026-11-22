@@ -1,6 +1,6 @@
 # Port Profile schema
 
-A Port Profile is versioned JSON describing the minimum contract between the loader and an RPG Maker MV/NW.js package. The canonical JSON Schema is [`../profiles/schema.json`](../profiles/schema.json); TypeScript callers should use `parsePortProfile` from `src/port-profile.ts` for strict validation and normalized defaults.
+A Port Profile is versioned JSON describing the minimum contract between the loader and an RPG Maker MV/NW.js package. The canonical JSON Schema is [`../profiles/schema.json`](../profiles/schema.json). `npm run profile:validate -- <profile.json>` applies that schema with Ajv and then runs the production `parsePortProfile` parser, so the declarative schema and runtime normalization are both exercised; TypeScript callers should use `parsePortProfile` for strict validation and normalized defaults.
 
 Required sections are `runtime`, `entry`, `compat`, `save`, and `package`; `assets` and `media` are optional and receive safe defaults. `assets.hashedLookup` controls the profile's short hashed-name fallback. `assets.envelope` is an explicit, versioned in-memory decoder contract (`basename-xor-v1`) and must only be used when the package owner can document that format. Version `1` defaults media extension fallback to MP4/WebM siblings and variant fallback to `-l`. Profiles are game-neutral: do not encode title IDs, private SD paths, or redistributed game content.
 
