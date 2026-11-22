@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { checkVideoRuntime, pinnedCode } from './check-video-runtime.mjs';
 import { acceptHost } from './accept-host.mjs';
 import { acceptPackage } from './accept-package.mjs';
+import { acceptPackageRuntime } from './accept-package-runtime.mjs';
 import { verifyRuntimeProvenance } from './verify-runtime-provenance.mjs';
 import { BROWSER_REPORT_PATH, readBrowserValidationReport } from './browser-report.mjs';
 
@@ -107,6 +108,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   const modFixture = resolve(project, 'tests/fixtures/neutral-mv/mod');
   const packageFixture = resolve(project, 'tests/fixtures/generic-mv/www');
   const packageAcceptance = await acceptPackage({ gameRoot: packageFixture });
+  const packageRuntimeAcceptance = await acceptPackageRuntime({ gameRoot: packageFixture });
   const hostAcceptance = await acceptHost({ gameRoot: neutralFixture });
   const overlayAcceptance = await acceptHost({ gameRoot: neutralFixture, modRoot: modFixture });
   const neutralSmoke = await neutralSmokeReport(project);
@@ -137,6 +139,10 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       ...packageAcceptance,
       fixture: relative(project, packageFixture),
     },
+    packageRuntimeAcceptance: {
+      ...packageRuntimeAcceptance,
+      fixture: relative(project, packageFixture),
+    },
     hostAcceptance: {
       status: hostAcceptance.status,
       environment: hostAcceptance.environment,
@@ -160,6 +166,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       runtimeProvenance: runtimeProvenance.status,
       profile: hostAcceptance.checks.profile,
       packageAcceptance: packageAcceptance.status,
+      packageRuntimeAcceptance: packageRuntimeAcceptance.status,
       portCheck: hostAcceptance.checks.entry === 'pass' && hostAcceptance.checks.scriptGraph === 'pass' ? 'pass' : 'fail',
       acceptHost: hostAcceptance.status,
       overlayAcceptance: overlayAcceptance.status,

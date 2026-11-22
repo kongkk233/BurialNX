@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { acceptHost } from '../tools/accept-host.mjs';
 import { verifyRuntimeProvenance } from '../tools/verify-runtime-provenance.mjs';
 import { validateBrowserReport } from '../tools/browser-report.mjs';
+import { validateProfileDocument } from '../tools/profile-schema.mjs';
 import { acceptPackage } from '../tools/accept-package.mjs';
+import { acceptPackageRuntime } from '../tools/accept-package-runtime.mjs';
 import { validateProfileFile } from '../tools/validate-profile.mjs';
 import { checkPort, safeRelative } from '../tools/check-port.mjs';
 import { profileApi } from '../tools/validate-profile.mjs';
@@ -36,6 +38,16 @@ test('generic package acceptance does not execute game scripts or require neutra
   assert.equal(result.runtimeBehavior, 'not-observed');
   assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);
   assert.match(result.evidence.save.roundTrip, /profile-saves\/file1\.generic$/);
+});
+
+test('generic package runtime acceptance executes scripts without neutral markers', async () => {
+  const result = await acceptPackageRuntime({ gameRoot: genericFixture });
+  assert.equal(result.status, 'pass');
+  assert.equal(result.executedGameScripts, true);
+  assert.equal(result.runtimeBehavior, 'observed');
+  assert.equal(result.evidence.neutralMarkerRequired, false);
+  assert.equal(result.evidence.startup, 'scene-boot');
+  assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);
 });
 
 test('generic package acceptance keeps mod-first profile precedence without executing scripts', async () => {
@@ -150,10 +162,34 @@ test('port checker path helper rejects traversal and external URLs', () => {
   assert.equal(safeRelative('/absolute/file'), null);
 });
 
+test('port checker rejects package files that escape through symlinks', async () => {
+  const temporary = await mkdtemp(resolve('.test-symlink-'));
+  try {
+    const game = join(temporary, 'www');
+    await cp(genericFixture, game, { recursive: true });
+    const outside = join(temporary, 'outside.js');
+    await writeFile(outside, '/* outside */\n');
+    await rm(join(game, 'js/main.js'));
+    await symlink(outside, join(game, 'js/main.js'));
+    await assert.rejects(
+      checkPort({ gameRoot: game, modRoot: null, profile: null, manifest: null }),
+      /symlink/,
+    );
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
 test('profile CLI applies the canonical JSON Schema and production parser', async () => {
   const result = await validateProfileFile(resolve('profiles/examples/minimal-mv.json'));
   assert.equal(result.profile.id, 'minimal-mv');
   assert.equal(result.profile.entry.script, 'js/main.js');
+});
+
+test('profile schema validation rejects cross-field envelope offsets', async () => {
+  const valid = JSON.parse((await readFile(resolve('profiles/examples/minimal-mv.json'))).toString('utf8'));
+  valid.assets = { hashedLookup: false, envelope: { magic: 'BNXENC', headerBytes: 7, lengthByteOffset: 7, algorithm: 'basename-xor-v1' } };
+  assert.throws(() => validateProfileDocument(valid), /lengthByteOffset.*smaller than headerBytes/);
 });
 
 test('profile CLI uses the production parser for invalid profiles', async () => {

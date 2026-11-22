@@ -88,7 +88,9 @@ Options are fully translated — Always Dash, BGM/SFX Volume, On/Off — using t
 
 ## Package acceptance and neutral validation
 
-`npm run accept:package` is the game-neutral, profile-driven package gate. It validates the profile, entry and ordered script graph, safe asset paths, media policy shape, dynamic save directory/extension round-trip, and session patch rollback without executing target game scripts. Its result explicitly reports `executedGameScripts: false` and `runtimeBehavior: not-observed`.
+`npm run accept:package` is the game-neutral, profile-driven package contract gate. It validates the profile, entry and ordered script graph, safe asset paths, media policy shape, dynamic save directory/extension round-trip, and session patch rollback without executing target game scripts. Its result explicitly reports `executedGameScripts: false` and `runtimeBehavior: not-observed`.
+
+`npm run accept:package:runtime` is the separate game-neutral runtime gate. It executes the generic fixture's ordered scripts in the host VM and starts the production runtime-plan fallback, reporting `executedGameScripts: true` and `runtimeBehavior: observed` without requiring the neutral fixture marker. Neither command substitutes for an authorized commercial-game or Switch hardware run.
 
 `npm run accept:host` and `npm run accept:overlay` are separate neutral-fixture deep acceptance checks. They exercise the repository's synthetic neutral runtime contract and are not evidence that a commercial game, native decoder, or Switch hardware has been tested.
 
@@ -103,6 +105,7 @@ npm ci
 npm run profile:validate -- profiles/examples/minimal-mv.json
 npm run port:check -- --game-root tests/fixtures/neutral-mv/www
 npm run accept:package   # generic profile contract; does not execute game scripts
+npm run accept:package:runtime # generic host runtime; executes synthetic fixture scripts
 npm run accept:host       # neutral fixture deep contract; host-only
 npm run accept:overlay    # neutral game + mod-first overlay contract
 npm run smoke:neutral     # same neutral contract through the smoke entrypoint

@@ -1,7 +1,6 @@
-import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { checkPort, safeRelative } from './check-port.mjs';
+import { checkPort, containedFile, safeRelative } from './check-port.mjs';
 import { loadBundledModule } from './ts-bundle.mjs';
 
 const fixture = resolve('tests/fixtures/generic-mv/www');
@@ -43,13 +42,14 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
   const savesApi = await loadBundledModule('src/saves.ts');
   const sessions = await loadBundledModule('src/game-session.ts');
 
-  const entry = await readFile(resolve(port.roots[port.entry.root], port.entry.path), 'utf8');
+  const entryBytes = await containedFile(port.roots[port.entry.root], port.entry.path, 'entry HTML', false);
+  const entry = new TextDecoder().decode(entryBytes);
   assert(entry.length > 0, 'entry HTML is empty');
   assert(port.scriptGraph.files.length === port.scriptGraph.paths.length, 'ordered script graph is incomplete');
   assert(port.scriptGraph.files.every((file, index) => file.path === port.scriptGraph.paths[index]), 'ordered script graph changed during acceptance');
   for (const file of port.scriptGraph.files) {
     const root = port.roots[file.root];
-    const bytes = await readFile(resolve(root, file.path));
+    const bytes = await containedFile(root, file.path, `script ${file.path}`, false);
     assert(bytes.byteLength > 0, `script graph file is empty: ${file.path}`);
   }
 

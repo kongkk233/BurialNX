@@ -68,6 +68,7 @@ function unverifiedClaim(claim, value, reason) {
 export async function verifyRuntimeProvenance({ project = resolve('.'), manifestPath = 'runtime/manifest.json', manifest = null } = {}) {
   const root = resolve(project);
   const runtimeManifest = manifest ?? JSON.parse(await readFile(projectPath(root, manifestPath), 'utf8'));
+  if (runtimeManifest.schema !== 1) throw new Error('runtime manifest schema must be 1');
   const verified = [
     await verifyFileClaim({
       project: root,

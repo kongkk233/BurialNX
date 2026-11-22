@@ -27,8 +27,10 @@ jobs:
         run: npm ci
       - name: Validate example profile
         run: npm run profile:validate -- profiles/examples/minimal-mv.json
-      - name: Run generic package acceptance
+      - name: Run generic package contract acceptance
         run: npm run accept:package
+      - name: Run generic package runtime acceptance
+        run: npm run accept:package:runtime
       - name: Check neutral port contract
         run: npm run port:check -- --game-root tests/fixtures/neutral-mv/www
       - name: Run neutral host acceptance
@@ -72,6 +74,13 @@ jobs:
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
         run: npm run test:movie:browser -- --report browser-validation.json
+      - name: Upload browser validation report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-validation
+          path: browser-validation.json
+          if-no-files-found: error
+          retention-days: 7
 
   release:
     name: Clean reproducible release gate
@@ -89,5 +98,12 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Download browser validation report
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: browser-validation
+          path: .
       - name: Verify clean reproducible release
+        env:
+          BURIALNX_REUSE_BROWSER_REPORT: '1'
         run: npm run verify:release

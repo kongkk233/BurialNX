@@ -1,8 +1,7 @@
-import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { checkPort } from './check-port.mjs';
+import { checkPort, containedFile } from './check-port.mjs';
 import { loadBundledModule } from './ts-bundle.mjs';
 
 const fixture = resolve('tests/fixtures/neutral-mv/www');
@@ -44,7 +43,8 @@ export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
   sandbox.globalThis = sandbox;
   for (const file of port.scriptGraph.files) {
     const root = port.roots[file.root];
-    const source = await readFile(resolve(root, file.path), 'utf8');
+    const bytes = await containedFile(root, file.path, `script ${file.path}`, false);
+    const source = new TextDecoder().decode(bytes);
     vm.runInNewContext(source, sandbox, { filename: `${file.root}/${file.path}` });
   }
   assert(Array.isArray(sandbox.__neutralMvFixture?.scripts), 'neutral fixture scripts did not run');
@@ -63,17 +63,12 @@ export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
       assert(match, `asset reader escaped overlay roots: ${path}`);
       const label = match[1];
       const relative = match[2];
-      const root = label === 'mod' ? modRoot : gameRoot;
+      const root = label === 'mod' ? port.roots.mod : port.roots.game;
       assert(root, `asset reader requested unavailable ${label} root: ${path}`);
       reads.push(relative);
       overlayReads.push(`${label}/${relative}`);
-      try {
-        const bytes = await readFile(resolve(root, relative));
-        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-      } catch (error) {
-        if (error?.code === 'ENOENT') return null;
-        throw error;
-      }
+      const bytes = await containedFile(root, relative, `asset ${relative}`);
+      return bytes ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) : null;
     },
   };
   const assets = assetsApi.gameAssets('game', modRoot ? 'mod' : null, diskReader, 1024 * 1024, { hashedLookup: false });

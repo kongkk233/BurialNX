@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { access, readFile, writeFile } from 'node:fs/promises';
+import { access, lstat, readFile, realpath, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadBundledModule } from './ts-bundle.mjs';
 import { parseProfileBytes } from './profile-schema.mjs';
@@ -23,13 +23,43 @@ function inside(root, candidate) {
   return rel === '' || (rel && !rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel));
 }
 
-async function optionalBytes(path) {
-  try { return await readFile(path); }
-  catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
+async function safeRegularFile(path, label, optional = true) {
+  const absolute = resolve(path);
+  try {
+    const parent = resolve(dirname(absolute));
+    const canonicalParent = await realpath(parent);
+    if (canonicalParent !== parent) throw new Error(`${label} parent resolves through a symlink: ${path}`);
+    const info = await lstat(absolute);
+    if (info.isSymbolicLink()) throw new Error(`${label} must not be a symlink: ${path}`);
+    if (!info.isFile()) throw new Error(`${label} is not a regular file: ${path}`);
+    return await readFile(absolute);
+  } catch (error) {
+    if (error?.code === 'ENOENT' && optional) return null;
+    throw error;
+  }
+}
+
+async function containedFile(root, relativePath, label, optional = true) {
+  const safe = safeRelative(relativePath);
+  if (!safe) throw new Error(`${label} is not a safe relative path: ${relativePath}`);
+  const base = resolve(root);
+  const candidate = resolve(base, safe);
+  if (!inside(base, candidate)) throw new Error(`${label} escapes package root: ${relativePath}`);
+  try {
+    const canonical = await realpath(candidate);
+    if (canonical !== candidate) throw new Error(`${label} resolves through a symlink: ${relativePath}`);
+    const info = await lstat(candidate);
+    if (info.isSymbolicLink()) throw new Error(`${label} must not be a symlink: ${relativePath}`);
+    if (!info.isFile()) throw new Error(`${label} is not a regular file: ${relativePath}`);
+    return await readFile(candidate);
+  } catch (error) {
+    if (error?.code === 'ENOENT' && optional) return null;
+    throw error;
+  }
 }
 
 async function requiredBytes(path, label) {
-  const bytes = await optionalBytes(path);
+  const bytes = await safeRegularFile(path, label, false);
   if (!bytes) throw new Error(`${label} is missing: ${path}`);
   return bytes;
 }
@@ -57,7 +87,7 @@ async function loadProfile(api, gameRoot, modRoot, explicitPath) {
   for (const [label, root] of [['mod', modRoot], ['game', gameRoot]]) {
     if (!root) continue;
     const path = resolve(root, PROFILE_NAME);
-    const bytes = await optionalBytes(path);
+    const bytes = await containedFile(root, PROFILE_NAME, `${label} profile`);
     if (bytes) return { profile: api.parsePortProfile(parseProfileBytes(bytes, `${label}:${path}`)), source: `${label}:${path}`, bytes };
   }
   const profile = api.defaultPortProfile;
@@ -67,8 +97,8 @@ async function loadProfile(api, gameRoot, modRoot, explicitPath) {
 export async function checkPort(options) {
   const api = await loadBundledModule('src/port-profile.ts');
   const runtime = await loadBundledModule('src/runtime-plan.ts');
-  const gameRoot = resolve(options.gameRoot);
-  const modRoot = options.modRoot ? resolve(options.modRoot) : null;
+  const gameRoot = await realpath(resolve(options.gameRoot));
+  const modRoot = options.modRoot ? await realpath(resolve(options.modRoot)) : null;
   const roots = modRoot ? [['mod', modRoot], ['game', gameRoot]] : [['game', gameRoot]];
   for (const [, root] of roots) {
     await access(root, constants.R_OK);
@@ -79,10 +109,8 @@ export async function checkPort(options) {
     const safe = safeRelative(relativePath);
     if (!safe) throw new Error(`${label} is not a safe relative path: ${relativePath}`);
     for (const [rootLabel, root] of roots) {
-      const candidate = resolve(root, safe);
-      if (!inside(root, candidate)) throw new Error(`${label} escapes ${rootLabel} root: ${relativePath}`);
-      const bytes = await optionalBytes(candidate);
-      if (bytes) return { root: rootLabel, path: candidate, relative: safe, bytes };
+      const bytes = await containedFile(root, safe, `${label} in ${rootLabel} root`);
+      if (bytes) return { root: rootLabel, path: resolve(root, safe), relative: safe, bytes };
     }
     return null;
   };
@@ -157,4 +185,4 @@ if (import.meta.url === cliPath()) {
   }
 }
 
-export { parseArgs, safeRelative };
+export { containedFile, parseArgs, safeRelative };

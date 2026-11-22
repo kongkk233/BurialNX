@@ -13,6 +13,10 @@ function schemaErrors() {
 
 export function validateProfileDocument(value, label = 'profile') {
   if (!schemaValidator(value)) throw new Error(`Profile schema validation failed at ${label}: ${schemaErrors()}`);
+  const envelope = value.assets?.envelope;
+  if (envelope && envelope.lengthByteOffset >= envelope.headerBytes) {
+    throw new Error(`Profile schema validation failed at ${label}: $.assets.envelope.lengthByteOffset must be smaller than headerBytes`);
+  }
   return value;
 }
 
