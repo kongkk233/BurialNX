@@ -4,6 +4,7 @@ import { constants } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadBundledModule } from './ts-bundle.mjs';
+import { parseProfileBytes } from './profile-schema.mjs';
 
 const PROFILE_NAME = 'burialnx.port.json';
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -51,13 +52,13 @@ async function loadProfile(api, gameRoot, modRoot, explicitPath) {
   if (explicitPath) {
     const path = resolve(explicitPath);
     const bytes = await requiredBytes(path, 'profile');
-    return { profile: api.parsePortProfileBytes(bytes), source: path, bytes };
+    return { profile: api.parsePortProfile(parseProfileBytes(bytes, path)), source: path, bytes };
   }
   for (const [label, root] of [['mod', modRoot], ['game', gameRoot]]) {
     if (!root) continue;
     const path = resolve(root, PROFILE_NAME);
     const bytes = await optionalBytes(path);
-    if (bytes) return { profile: api.parsePortProfileBytes(bytes), source: `${label}:${path}`, bytes };
+    if (bytes) return { profile: api.parsePortProfile(parseProfileBytes(bytes, `${label}:${path}`)), source: `${label}:${path}`, bytes };
   }
   const profile = api.defaultPortProfile;
   return { profile, source: 'default', bytes: Buffer.from(JSON.stringify(profile)) };
