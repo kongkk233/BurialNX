@@ -78,6 +78,19 @@ async function reproducibilityReport(project) {
   }
 }
 
+async function neutralSmokeReport(project) {
+  try {
+    const report = JSON.parse(await readFile(resolve(project, 'neutral-smoke.json'), 'utf8'));
+    if (report.schema !== 1 || report.tool !== 'smoke' || report.smokeMode !== 'neutral-port-contract') {
+      throw new Error('neutral-smoke.json has an invalid report identity');
+    }
+    return report;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+    return { schema: 1, status: 'not-run', tool: 'smoke', smokeMode: 'neutral-port-contract', fixture: 'tests/fixtures/neutral-mv/www' };
+  }
+}
+
 export async function generateManifest(nroPath = 'burialnx.nro', { project = resolve('.'), write = true } = {}) {
   const absoluteNro = resolve(project, nroPath);
   const buffer = await readFile(absoluteNro);
@@ -87,6 +100,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   const runtimeManifest = JSON.parse(await readFile(resolve(project, 'runtime/manifest.json'), 'utf8'));
   const nacp = nacpSummary(buffer, layout);
   const hostAcceptance = await acceptHost({ gameRoot: resolve(project, 'tests/fixtures/neutral-mv/www') });
+  const neutralSmoke = await neutralSmokeReport(project);
   const reproducibility = await reproducibilityReport(project);
   const lockfile = await readFile(resolve(project, 'package-lock.json'));
   const gitCommit = command('git', ['rev-parse', 'HEAD'], project);
@@ -113,6 +127,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       checks: hostAcceptance.checks,
       fixture: relative(project, resolve(project, 'tests/fixtures/neutral-mv/www')),
     },
+    neutralSmoke,
     reproducibility,
     validation: {
       structural: 'pass',
@@ -123,7 +138,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       reproducibility: reproducibility.status,
       npmTest: 'run by verify:release',
       typecheck: 'run by verify:release',
-      smoke: 'not run by manifest generator',
+      smoke: neutralSmoke.status === 'pass' ? 'neutral-port-contract: pass' : neutralSmoke.status,
       browser: 'not run',
       native: 'not run',
       hardware: runtimeManifest.hardwarePlaybackObserved === true ? 'observed in runtime manifest' : 'not verified',

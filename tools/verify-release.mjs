@@ -20,6 +20,8 @@ if (stored.artifacts?.runtimeExecutable?.sha256 !== actual.artifacts.runtimeExec
 if (stored.artifacts?.runtimeExecutable?.expectedSha256 !== actual.artifacts.runtimeExecutable.expectedSha256) throw new Error('release manifest expected runtime hash is stale');
 if (stored.nacp?.title !== actual.nacp.title || stored.nacp?.id !== actual.nacp.id) throw new Error('release manifest NACP summary is stale');
 if (JSON.stringify(stored.hostAcceptance) !== JSON.stringify(actual.hostAcceptance)) throw new Error('release manifest host acceptance is stale');
+if (JSON.stringify(stored.neutralSmoke) !== JSON.stringify(actual.neutralSmoke)) throw new Error('release manifest neutral smoke is stale');
+if (actual.neutralSmoke.status !== 'pass' || actual.neutralSmoke.smokeMode !== 'neutral-port-contract') throw new Error('neutral smoke gate did not pass');
 if (JSON.stringify(stored.reproducibility) !== JSON.stringify(actual.reproducibility)) throw new Error('release manifest reproducibility is stale');
 if (actual.reproducibility.status !== 'pass' || actual.reproducibility.byteIdentical !== true) throw new Error('release reproducibility gate did not pass');
 for (const key of ['profile', 'portCheck', 'acceptHost', 'reproducibility', 'npmTest', 'typecheck', 'structural', 'runtime', 'smoke', 'browser', 'native', 'hardware']) {
