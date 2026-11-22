@@ -10,6 +10,20 @@ import { PNG } from 'pngjs';
 const root = process.env.BURIALNX_GAME_ROOT;
 if (!root) throw new Error('Set BURIALNX_GAME_ROOT to your own game www folder');
 const base = resolve(root);
+// The repository's neutral fixture is intentionally RPG Maker-shaped rather
+// than a full MV engine. Route it through the executable Port Kit contract so
+// `BURIALNX_GAME_ROOT=tests/fixtures/neutral-mv/www npm run smoke` is useful
+// and honest; real game roots continue through the full MV smoke harness below.
+try {
+  const profile = JSON.parse(await readFile(resolve(base, 'burialnx.port.json'), 'utf8'));
+  if (profile.id === 'neutral-mv') {
+    const { acceptHost } = await import('./accept-host.mjs');
+    console.log(JSON.stringify({ ...(await acceptHost({ gameRoot: base })), tool: 'smoke', smokeMode: 'neutral-port-contract' }, null, 2));
+    process.exit(0);
+  }
+} catch (error) {
+  if (error?.code !== 'ENOENT') throw error;
+}
 const read = async (path) => {
   if (!path.startsWith('game/')) throw new Error('Unexpected read root');
   const resolved = resolve(base, path.slice(5));
@@ -17,7 +31,7 @@ const read = async (path) => {
   try { const data = await readFile(resolved); return Uint8Array.from(data).buffer; }
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 };
-const result = await build({ entryPoints: ['tests/smoke-entry.ts'], bundle: true, write: false, format: 'iife', globalName: 'Smoke', target: 'es2022' });
+const result = await build({ entryPoints: ['tests/smoke-entry.ts'], bundle: true, write: false, format: 'iife', globalName: 'Smoke', target: 'es2022', define: { __DEBUG__: 'false' } });
 const drawing = new Proxy({ canvas: null, measureText: () => ({ width: 30 }), getImageData: () => ({ data: new Uint8ClampedArray(64 * 64 * 4) }), createPattern: () => ({}), createLinearGradient: () => ({ addColorStop() {} }) }, {
   get(target, key) { return key in target ? target[key] : () => {}; },
   set(target, key, value) { target[key] = value; return true; },

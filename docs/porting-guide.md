@@ -32,4 +32,4 @@ The media resolver protects local paths, checks container headers when a MIME hi
 
 ## Validation layers
 
-Host tests cover deterministic logic and fixtures. Browser tests cover DOM/media behavior where available. Native tests cover the Switch runtime and decoder. Hardware playback requires a physical console, known build, permitted game package, and operator observations; `npm test` is not hardware validation.
+Host tests cover deterministic logic and fixtures. For the repository fixture, `BURIALNX_GAME_ROOT=tests/fixtures/neutral-mv/www npm run smoke` runs the same executable Port Kit contract in explicit `neutral-port-contract` mode; a permitted full MV game root uses the development smoke harness instead. Browser tests cover DOM/media behavior where available. Native tests cover the Switch runtime and decoder. Hardware playback requires a physical console, known build, permitted game package, and operator observations; `npm test` is not hardware validation.

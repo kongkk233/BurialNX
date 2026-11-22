@@ -7,6 +7,7 @@ Validation levels:
 - **Port contract**: `npm run profile:validate`, `npm run port:check`, and `npm run accept:host`; this uses only the repository's neutral fixture and is explicitly host-only.
 - **Host**: `npm test`; no real game directory and no hardware.
 - **Build/typecheck**: reproducible dependency install with `npm ci`, NRO packaging, and production graph resolution.
+- **Smoke**: a neutral fixture may be checked with `BURIALNX_GAME_ROOT=tests/fixtures/neutral-mv/www npm run smoke` (reported as `neutral-port-contract`); a permitted full MV directory uses the development-only simulated-frame smoke harness. The release manifest does not infer either result.
 - **Browser**: optional `npm run test:movie:browser`; requires browser/media support.
 - **Native**: optional `npm run test:movie:native`; requires native fixtures/toolchain.
 - **Hardware**: physical Switch playback and operator evidence. It is not inferred from a passing host test or NRO build, and the manifest remains `not verified` unless explicitly observed.

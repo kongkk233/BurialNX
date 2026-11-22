@@ -24,6 +24,7 @@ async function assertRejects(promise, pattern) {
 export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
   const port = await checkPort({ gameRoot, modRoot, profile: null, manifest: null });
   const library = await loadBundledModule('src/library.ts');
+  const runtimePlan = await loadBundledModule('src/runtime-plan.ts');
   const sessions = await loadBundledModule('src/game-session.ts');
   const assetsApi = await loadBundledModule('src/game-assets.ts');
   const mediaApi = await loadBundledModule('src/video-source.ts');
@@ -112,8 +113,41 @@ export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
   saveRuntime.StorageManager.remove(1);
   assert(!saveRuntime.StorageManager.exists(1), 'save backend did not remove the slot');
 
-  const rollbackTarget = { run() { return 'original'; } };
   const globalKey = '__burialnxAcceptHostTemporaryGlobal';
+  const lifecycleRuntime = {
+    frames: 0,
+    SceneManager: { updateMain() { return this.frames; } },
+  };
+  const originalUpdateMain = lifecycleRuntime.SceneManager.updateMain;
+  const launchLifecycle = async (slot) => {
+    sessions.beginGameSession();
+    try {
+      sessions.patchSessionMethod('accept-host.lifecycle-scene-manager', lifecycleRuntime.SceneManager, 'updateMain', (original) => function () {
+        lifecycleRuntime.frames++;
+        return original.apply(this, arguments);
+      });
+      globalThis[globalKey] = `launch-${slot}`;
+      const startup = runtimePlan.startGame(sandbox);
+      assert(startup === 'onload', `neutral fixture did not start through runtime-plan: ${startup}`);
+      lifecycleRuntime.SceneManager.updateMain();
+      assert(sandbox.__neutralMvFixture.booted === true, 'neutral fixture did not boot inside lifecycle');
+      assert(lifecycleRuntime.frames === slot, `unexpected lifecycle frame count at launch ${slot}`);
+      const media = await resolver('movies/variant.mp4');
+      media.release();
+      saveRuntime.StorageManager.save(slot, `neutral-lifecycle-save-${slot}`);
+      assert(saveRuntime.StorageManager.load(slot) === `neutral-lifecycle-save-${slot}`, `lifecycle save ${slot} did not round-trip`);
+      assert(sessions.currentGamePatches()?.activeCount === 1, 'lifecycle patch was not session-owned');
+      saveRuntime.StorageManager.remove(slot);
+    } finally {
+      sessions.endGameSession();
+    }
+    assert(lifecycleRuntime.SceneManager.updateMain === originalUpdateMain, `lifecycle patch ${slot} was not restored`);
+    assert(!Object.prototype.hasOwnProperty.call(globalThis, globalKey), `lifecycle global ${slot} was not removed`);
+  };
+  await launchLifecycle(1);
+  await launchLifecycle(2);
+
+  const rollbackTarget = { run() { return 'original'; } };
   sessions.beginGameSession();
   try {
     sessions.patchSessionMethod('accept-host.fixture-method', rollbackTarget, 'run', (original) => function () { return `${original.call(this)}-patched`; });
@@ -139,6 +173,7 @@ export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
       assetPaths: 'pass',
       mediaPolicy: 'pass',
       saveContract: 'pass',
+      lifecycle: 'pass',
       rollback: 'pass',
     },
     evidence: {
@@ -156,6 +191,7 @@ export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
         contract: port.contracts.save,
         roundTrip: 'game/save/file1.rpgsave write/read/remove passed',
       },
+      lifecycle: 'runtime-plan launch -> media/save use -> session teardown -> relaunch passed; frames=2',
       rollback: 'prototype/method restored and temporary global removed',
     },
   };

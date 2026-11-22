@@ -25,6 +25,7 @@ test('host acceptance executes media, save, and rollback behavior', async () => 
     assetPaths: 'pass',
     mediaPolicy: 'pass',
     saveContract: 'pass',
+    lifecycle: 'pass',
     rollback: 'pass',
   });
   assert.match(result.evidence.media.extensionFallback, /fallback\.webm/);
