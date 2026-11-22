@@ -32,6 +32,43 @@ test('port checker validates the neutral fixture and records ordered scripts', a
   });
 });
 
+test('port checker verifies an explicitly declared package manifest identity', async () => {
+  const temporary = await mkdtemp(resolve('.test-package-manifest-'));
+  try {
+    const gameRoot = join(temporary, 'www');
+    await cp(genericFixture, gameRoot, { recursive: true });
+    const profile = JSON.parse((await readFile(join(gameRoot, 'burialnx.port.json'))).toString('utf8'));
+    profile.package.manifest = 'package.json';
+    const profilePath = join(temporary, 'profile.json');
+    await writeFile(profilePath, `${JSON.stringify(profile)}\n`);
+    await writeFile(join(gameRoot, 'package.json'), `${JSON.stringify({ name: profile.package.name, version: profile.package.version })}\n`);
+
+    const result = await checkPort({ gameRoot, modRoot: null, profile: profilePath, manifest: null });
+    assert.equal(result.contracts.package.status, 'pass');
+    assert.equal(result.contracts.package.identity, 'verified');
+    assert.equal(result.contracts.package.manifest.path, 'package.json');
+    assert.equal(result.contracts.package.manifest.root, 'game');
+    assert.equal(result.contracts.package.manifest.bytes, Buffer.byteLength(JSON.stringify({ name: profile.package.name, version: profile.package.version }) + '\n'));
+    assert.match(result.contracts.package.manifest.sha256, /^[0-9a-f]{64}$/);
+    assert.equal(result.contracts.package.manifest.name, profile.package.name);
+    assert.equal(result.contracts.package.manifest.version, profile.package.version);
+    assert.deepEqual(result.contracts.classification, {
+      enforced: ['entry.html', 'scriptGraph', 'asset.pathSafety', 'media.policy', 'save.contract', 'compatibility.flags', 'package.manifest', 'package.name', 'package.version'],
+      validatedOnly: ['entry.script'],
+      metadataOnly: ['runtime.kind', 'runtime.version'],
+      notObserved: ['targetGameRuntime', 'nativeDecoder', 'switchHardware'],
+    });
+
+    await writeFile(join(gameRoot, 'package.json'), JSON.stringify({ name: profile.package.name, version: '9.9.9' }));
+    await assert.rejects(
+      checkPort({ gameRoot, modRoot: null, profile: profilePath, manifest: null }),
+      /package manifest version mismatch/,
+    );
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
 test('generic package acceptance does not execute game scripts or require neutral markers', async () => {
   const result = await acceptPackage({ gameRoot: genericFixture });
   assert.equal(result.status, 'pass');

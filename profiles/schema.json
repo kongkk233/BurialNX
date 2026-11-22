@@ -57,7 +57,8 @@
       "type": "object", "additionalProperties": false, "required": ["name", "version"],
       "properties": {
         "name": { "type": "string", "minLength": 1, "$ref": "#/$defs/safeText" },
-        "version": { "type": "string", "minLength": 1, "$ref": "#/$defs/safeText" }
+        "version": { "type": "string", "minLength": 1, "$ref": "#/$defs/safeText" },
+        "manifest": { "type": "string", "minLength": 1, "$ref": "#/$defs/relativePath" }
       }
     }
   },

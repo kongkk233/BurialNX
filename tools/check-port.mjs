@@ -115,6 +115,24 @@ export async function checkPort(options) {
     return null;
   };
 
+  let packageManifest = null;
+  let packageMetadata = null;
+  if (profile.package.manifest) {
+    packageManifest = await readOverlay(profile.package.manifest, 'package manifest');
+    if (!packageManifest) throw new Error(`package manifest is missing: ${profile.package.manifest}`);
+    let parsed;
+    try { parsed = JSON.parse(new TextDecoder().decode(packageManifest.bytes)); }
+    catch (error) { throw new Error(`package manifest is invalid JSON: ${error instanceof Error ? error.message : String(error)}`); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('package manifest must be a JSON object');
+    if (typeof parsed.name !== 'string' || parsed.name !== profile.package.name) {
+      throw new Error(`package manifest name mismatch: ${String(parsed.name)} != ${profile.package.name}`);
+    }
+    if (typeof parsed.version !== 'string' || parsed.version !== profile.package.version) {
+      throw new Error(`package manifest version mismatch: ${String(parsed.version)} != ${profile.package.version}`);
+    }
+    packageMetadata = { name: parsed.name, version: parsed.version };
+  }
+
   const entry = await readOverlay(profile.entry.html, 'entry.html');
   if (!entry) throw new Error(`entry HTML is missing from game/mod roots: ${profile.entry.html}`);
   const html = new TextDecoder().decode(entry.bytes);
@@ -128,6 +146,33 @@ export async function checkPort(options) {
     if (!file) throw new Error(`entry script is missing: ${script}`);
     scriptFiles.push({ path: script, root: file.root, bytes: file.bytes, sha256: sha256(file.bytes) });
   }
+  const packageContract = packageManifest ? {
+    status: 'pass',
+    identity: 'verified',
+    manifest: {
+      path: profile.package.manifest,
+      root: packageManifest.root,
+      bytes: packageManifest.bytes.byteLength,
+      sha256: sha256(packageManifest.bytes),
+      ...packageMetadata,
+    },
+  } : {
+    status: 'not-declared',
+    identity: 'metadata-only',
+    manifest: null,
+  };
+  const classification = {
+    enforced: [
+      'entry.html', 'scriptGraph', 'asset.pathSafety', 'media.policy', 'save.contract', 'compatibility.flags',
+      ...(packageManifest ? ['package.manifest', 'package.name', 'package.version'] : []),
+    ],
+    validatedOnly: ['entry.script'],
+    metadataOnly: [
+      'runtime.kind', 'runtime.version',
+      ...(packageManifest ? [] : ['package.name', 'package.version']),
+    ],
+    notObserved: ['targetGameRuntime', 'nativeDecoder', 'switchHardware'],
+  };
   const result = {
     schema: 1,
     status: 'pass',
@@ -150,13 +195,9 @@ export async function checkPort(options) {
       media: { status: 'pass', extensionFallback: profile.media.extensionFallback, variantFallback: profile.media.variantFallback },
       save: { status: 'pass', directory: profile.save.directory, extension: profile.save.extension },
       compatibility: { status: 'pass', mv: profile.compat.mv, node: profile.compat.node, nwjs: profile.compat.nwjs, appliedAt: 'game-launch' },
+      package: packageContract,
       entryScript: { status: profile.entry.script ? 'pass' : 'not-declared', path: profile.entry.script ?? null },
-      classification: {
-        enforced: ['entry.html', 'scriptGraph', 'asset.pathSafety', 'media.policy', 'save.contract', 'compatibility.flags'],
-        validatedOnly: ['entry.script'],
-        metadataOnly: ['runtime.kind', 'runtime.version', 'package.name', 'package.version'],
-        notObserved: ['targetGameRuntime', 'nativeDecoder', 'switchHardware'],
-      },
+      classification,
     },
   };
   if (options.manifest) {

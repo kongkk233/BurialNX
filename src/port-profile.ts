@@ -23,7 +23,7 @@ export interface PortProfile {
     variantFallback: string[];
   };
   save: { directory: string; extension: string };
-  package: { name: string; version: string };
+  package: { name: string; version: string; manifest?: string };
 }
 
 /** JSON-facing input type. Values are intentionally unknown until validated. */
@@ -128,7 +128,7 @@ export function parsePortProfile(input: unknown): PortProfile {
   const save = object(root.save, '$.save');
   noUnknown(save, '$.save', ['directory', 'extension']);
   const pkg = object(root.package, '$.package');
-  noUnknown(pkg, '$.package', ['name', 'version']);
+  noUnknown(pkg, '$.package', ['name', 'version', 'manifest']);
   const extensionFallback = list(media.extensionFallback, '$.media.extensionFallback', DEFAULT_MEDIA.extensionFallback).map((value, i) => extension(value, `$.media.extensionFallback[${i}]`));
   const variantFallback = list(media.variantFallback, '$.media.variantFallback', DEFAULT_MEDIA.variantFallback).map((value, i) => variant(value, `$.media.variantFallback[${i}]`));
   let envelope: AssetEnvelopeProfile | undefined;
@@ -155,7 +155,7 @@ export function parsePortProfile(input: unknown): PortProfile {
     assets: { hashedLookup: bool(assets.hashedLookup, '$.assets.hashedLookup', true), ...(envelope ? { envelope } : {}) },
     media: { extensionFallback, variantFallback },
     save: { directory: relativePath(save.directory, '$.save.directory'), extension: extension(text(save.extension, '$.save.extension'), '$.save.extension') },
-    package: { name: text(pkg.name, '$.package.name'), version: text(pkg.version, '$.package.version') },
+    package: { name: text(pkg.name, '$.package.name'), version: text(pkg.version, '$.package.version'), ...(pkg.manifest === undefined ? {} : { manifest: relativePath(pkg.manifest, '$.package.manifest') }) },
   };
 }
 
