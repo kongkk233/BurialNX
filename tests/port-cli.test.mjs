@@ -12,6 +12,7 @@ import { profileApi } from '../tools/validate-profile.mjs';
 const fixture = resolve('tests/fixtures/neutral-mv/www');
 const modFixture = resolve('tests/fixtures/neutral-mv/mod');
 const genericFixture = resolve('tests/fixtures/generic-mv/www');
+const genericModFixture = resolve('tests/fixtures/generic-mv/mod');
 
 test('port checker validates the neutral fixture and records ordered scripts', async () => {
   const result = await checkPort({ gameRoot: fixture, modRoot: null, profile: null, manifest: null });
@@ -34,6 +35,16 @@ test('generic package acceptance does not execute game scripts or require neutra
   assert.equal(result.runtimeBehavior, 'not-observed');
   assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);
   assert.match(result.evidence.save.roundTrip, /profile-saves\/file1\.generic$/);
+});
+
+test('generic package acceptance keeps mod-first profile precedence without executing scripts', async () => {
+  const result = await acceptPackage({ gameRoot: genericFixture, modRoot: genericModFixture });
+  assert.equal(result.status, 'pass');
+  assert.equal(result.executedGameScripts, false);
+  assert.equal(result.runtimeBehavior, 'not-observed');
+  assert.equal(result.evidence.profileId, 'generic-mv-mod');
+  assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/mod.js', 'js/main.js']);
+  assert.match(result.evidence.save.roundTrip, /profile-saves\/file1\.modgeneric$/);
 });
 
 test('runtime provenance recomputes repository file claims and exposes external boundaries', async () => {

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "id": "generic-mv-mod",
+  "runtime": { "kind": "nwjs", "version": "fixture" },
+  "entry": { "html": "index.html", "script": "js/main.js" },
+  "compat": { "mv": true, "nwjs": true, "node": true },
+  "assets": { "hashedLookup": false },
+  "media": { "extensionFallback": ["webm", "mp4"], "variantFallback": ["-mod", "-l"] },
+  "save": { "directory": "profile-saves", "extension": ".modgeneric" },
+  "package": { "name": "generic-mv-mod-fixture", "version": "1.0.0" }
+}
