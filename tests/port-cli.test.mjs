@@ -74,6 +74,16 @@ test('generic package acceptance does not execute game scripts or require neutra
   assert.equal(result.status, 'pass');
   assert.equal(result.executedGameScripts, false);
   assert.equal(result.runtimeBehavior, 'not-observed');
+  assert.equal(result.checks.sessionCleanup, 'pass');
+  assert.deepEqual(result.evidence.sessionCleanup, {
+    trackedTimeouts: 1,
+    trackedIntervals: 1,
+    timeoutCancelAttempts: 1,
+    intervalCancelAttempts: 1,
+    timeoutCancelFailures: 0,
+    intervalCancelFailures: 0,
+    patchRestoreFailures: 0,
+  });
   assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);
   assert.match(result.evidence.save.roundTrip, /profile-saves\/file1\.generic$/);
 });

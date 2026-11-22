@@ -4,20 +4,65 @@ export interface GameSessionSnapshot {
         names: Set<string>;
         values: Record<string, unknown>;
         fonts: Set<unknown>;
-        timers: Set<number>;
+        timeouts: Set<unknown>;
+        intervals: Set<unknown>;
         rafIds: Set<number>;
-        nativeClearTimeout: ((id: number) => void) | undefined;
+        nativeClearTimeout: ((id: unknown) => void) | undefined;
+        nativeClearInterval: ((id: unknown) => void) | undefined;
         nativeCancelAnimationFrame: ((id: number) => void) | undefined;
         patches: PatchRegistry;
 }
 
+export interface GameSessionCleanupReport {
+        hadSession: boolean;
+        trackedTimeouts: number;
+        trackedIntervals: number;
+        trackedAnimationFrames: number;
+        timeoutCancelAttempts: number;
+        intervalCancelAttempts: number;
+        animationFrameCancelAttempts: number;
+        timeoutCancelFailures: number;
+        intervalCancelFailures: number;
+        animationFrameCancelFailures: number;
+        patchesBefore: number;
+        patchRestoreFailures: number;
+        removedGlobals: number;
+        restoredGlobals: number;
+}
+
 let gameSession: GameSessionSnapshot | undefined;
+let lastCleanupReport: GameSessionCleanupReport | null = null;
+
+function emptyCleanupReport(hadSession: boolean): GameSessionCleanupReport {
+        return {
+                hadSession,
+                trackedTimeouts: 0,
+                trackedIntervals: 0,
+                trackedAnimationFrames: 0,
+                timeoutCancelAttempts: 0,
+                intervalCancelAttempts: 0,
+                animationFrameCancelAttempts: 0,
+                timeoutCancelFailures: 0,
+                intervalCancelFailures: 0,
+                animationFrameCancelFailures: 0,
+                patchesBefore: 0,
+                patchRestoreFailures: 0,
+                removedGlobals: 0,
+                restoredGlobals: 0,
+        };
+}
+
+/** Return the most recent session cleanup report without exposing mutable state. */
+export function getLastGameSessionCleanup(): GameSessionCleanupReport | null {
+        return lastCleanupReport ? { ...lastCleanupReport } : null;
+}
 
 /** Snapshot globalThis before launch so teardown can restore it. */
 export function beginGameSession() {
         // A failed launch must never leave the next launch sharing the previous
         // session's wrappers, timers, or global objects.
         if (gameSession) endGameSession();
+        lastCleanupReport = null;
         const global = globalThis as any;
         const values: Record<string, unknown> = {};
         const names = Object.getOwnPropertyNames(globalThis);
@@ -32,9 +77,11 @@ export function beginGameSession() {
                 names: new Set(names),
                 values,
                 fonts,
-                timers: new Set<number>(),
+                timeouts: new Set<unknown>(),
+                intervals: new Set<unknown>(),
                 rafIds: new Set<number>(),
                 nativeClearTimeout: typeof global.clearTimeout === 'function' ? global.clearTimeout.bind(global) : undefined,
+                nativeClearInterval: typeof global.clearInterval === 'function' ? global.clearInterval.bind(global) : undefined,
                 nativeCancelAnimationFrame: typeof global.cancelAnimationFrame === 'function' ? global.cancelAnimationFrame.bind(global) : undefined,
                 patches: new PatchRegistry(),
         };
@@ -43,7 +90,7 @@ export function beginGameSession() {
                 const nativeSetTimeout = global.setTimeout;
                 global.setTimeout = function (handler: unknown, timeout?: unknown, ...args: unknown[]) {
                         const id = nativeSetTimeout(handler, timeout, ...args);
-                        snapshot.timers.add(id);
+                        snapshot.timeouts.add(id);
                         return id;
                 };
         }
@@ -51,7 +98,7 @@ export function beginGameSession() {
                 const nativeSetInterval = global.setInterval;
                 global.setInterval = function (handler: unknown, timeout?: unknown, ...args: unknown[]) {
                         const id = nativeSetInterval(handler, timeout, ...args);
-                        snapshot.timers.add(id);
+                        snapshot.intervals.add(id);
                         return id;
                 };
         }
@@ -124,19 +171,37 @@ export function snapshotSessionObject(key: string, target: object | Function | n
 }
 
 /** Restore globalThis, nested runtime patches, fonts, timers, and rAFs. */
-export function endGameSession() {
+export function endGameSession(): GameSessionCleanupReport {
         const snapshot = gameSession;
-        if (!snapshot) return;
+        if (!snapshot) {
+                const report = emptyCleanupReport(false);
+                lastCleanupReport = report;
+                return report;
+        }
+        const report = emptyCleanupReport(true);
+        report.trackedTimeouts = snapshot.timeouts.size;
+        report.trackedIntervals = snapshot.intervals.size;
+        report.trackedAnimationFrames = snapshot.rafIds.size;
+        report.patchesBefore = snapshot.patches.activeCount;
         // Restore nested runtime methods before deleting newly-created globals.
         // PatchRegistry deliberately continues after an individual cleanup fails.
-        try { snapshot.patches.restoreAll(); } catch { /* cleanup is best-effort */ }
+        try { snapshot.patches.restoreAll(); } catch { report.patchRestoreFailures++; }
         gameSession = undefined;
         const global = globalThis as any;
         for (const id of snapshot.rafIds) {
-                try { snapshot.nativeCancelAnimationFrame?.(id); } catch { /* best-effort */ }
+                report.animationFrameCancelAttempts++;
+                if (!snapshot.nativeCancelAnimationFrame) { report.animationFrameCancelFailures++; continue; }
+                try { snapshot.nativeCancelAnimationFrame(id); } catch { report.animationFrameCancelFailures++; }
         }
-        for (const id of snapshot.timers) {
-                try { snapshot.nativeClearTimeout?.(id); } catch { /* best-effort */ }
+        for (const id of snapshot.timeouts) {
+                report.timeoutCancelAttempts++;
+                if (!snapshot.nativeClearTimeout) { report.timeoutCancelFailures++; continue; }
+                try { snapshot.nativeClearTimeout(id); } catch { report.timeoutCancelFailures++; }
+        }
+        for (const id of snapshot.intervals) {
+                report.intervalCancelAttempts++;
+                if (!snapshot.nativeClearInterval) { report.intervalCancelFailures++; continue; }
+                try { snapshot.nativeClearInterval(id); } catch { report.intervalCancelFailures++; }
         }
         try {
                 const fonts = global.fonts;
@@ -148,12 +213,19 @@ export function endGameSession() {
         } catch { /* font cleanup is optional */ }
         for (const name of Object.getOwnPropertyNames(globalThis)) {
                 if (snapshot.names.has(name)) continue;
-                try { delete global[name]; } catch { /* non-configurable: keep */ }
+                try {
+                        if (delete global[name]) report.removedGlobals++;
+                } catch { /* non-configurable: keep */ }
         }
         for (const name of snapshot.names) {
                 if (!(name in globalThis)) continue;
                 try {
-                        if (global[name] !== snapshot.values[name]) global[name] = snapshot.values[name];
+                        if (global[name] !== snapshot.values[name]) {
+                                global[name] = snapshot.values[name];
+                                if (global[name] === snapshot.values[name]) report.restoredGlobals++;
+                        }
                 } catch { /* non-writable: keep */ }
         }
+        lastCleanupReport = report;
+        return { ...report };
 }

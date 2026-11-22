@@ -55,6 +55,8 @@ if (stored.artifacts?.runtimeExecutable?.expectedSha256 !== actual.artifacts.run
 if (stored.nacp?.title !== actual.nacp.title || stored.nacp?.id !== actual.nacp.id) throw new Error('release manifest NACP summary is stale');
 if (JSON.stringify(stored.packageAcceptance) !== JSON.stringify(actual.packageAcceptance)) throw new Error('release manifest package acceptance is stale');
 if (actual.packageAcceptance.status !== 'pass' || actual.packageAcceptance.executedGameScripts !== false || actual.packageAcceptance.runtimeBehavior !== 'not-observed') throw new Error('generic package contract acceptance gate did not pass');
+const cleanup = actual.packageAcceptance.evidence?.sessionCleanup;
+if (!cleanup || cleanup.trackedTimeouts !== cleanup.timeoutCancelAttempts || cleanup.trackedIntervals !== cleanup.intervalCancelAttempts || cleanup.timeoutCancelFailures !== 0 || cleanup.intervalCancelFailures !== 0 || cleanup.patchRestoreFailures !== 0) throw new Error('generic package session cleanup evidence did not pass');
 if (JSON.stringify(stored.packageRuntimeAcceptance) !== JSON.stringify(actual.packageRuntimeAcceptance)) throw new Error('release manifest package runtime acceptance is stale');
 verifyPackageRuntimeEvidence(stored.packageRuntimeAcceptance, 'stored.packageRuntimeAcceptance');
 verifyPackageRuntimeEvidence(actual.packageRuntimeAcceptance, 'actual.packageRuntimeAcceptance');

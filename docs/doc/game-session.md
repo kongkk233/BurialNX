@@ -1,6 +1,6 @@
 # `game-session.ts`
 
-Extracted from `main.ts`, this module snapshots `globalThis` before a game launch and restores it during teardown. Because the game's scripts are eval'd at global scope, every RPG Maker MV global (`$dataXXX`, `SceneManager`, `Graphics`, the patched `WebAudio`, the host's `document/fetch/Image`, …) lands on `globalThis` — and without this machinery stays there after "Back to library", so V8 can never free the map data, sprite graphs, the PIXI renderer or the native audio buffers. The snapshot/restore pair lets all that memory be returned on teardown.
+Extracted from `main.ts`, this module snapshots `globalThis` before a game launch and restores it during teardown. Because the game's scripts are eval'd at global scope, every RPG Maker MV global (`$dataXXX`, `SceneManager`, `Graphics`, the patched `WebAudio`, the host's `document/fetch/Image`, …) lands on `globalThis` — and without this machinery stays there after "Back to library", so V8 can never free the map data, sprite graphs, the PIXI renderer or the native audio buffers. The snapshot/restore pair lets all that memory be returned on teardown. `endGameSession()` also returns a `GameSessionCleanupReport`: it records the timeout/interval/rAF cancellation attempts, cleanup failures, patch-restore failures, and global restoration counts. This is diagnostic evidence, not a sandbox guarantee; game code still runs with native privileges.
 
 ## File-level header
 
@@ -24,6 +24,8 @@ is no longer reachable.
 ```
 
 ## `beginGameSession()` — timer tracking
+
+`setTimeout` and `setInterval` are tracked separately and teardown calls their matching native clear function. The report's `tracked*` values describe registered handles; `*CancelAttempts` and `*CancelFailures` make the cleanup claim explicit rather than implying that a host timer API or hardware runtime has been independently audited.
 
 ```
 // Track every timer the game registers so teardown can cancel the ones

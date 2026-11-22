@@ -100,14 +100,23 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
 
   const target = { run() { return 'original'; } };
   const original = target.run;
+  let cleanup;
   sessions.beginGameSession();
   try {
     assert(sessions.patchSessionMethod('accept-package.rollback', target, 'run', previous => function () { return `${previous.call(this)}-patched`; }), 'session patch was not installed');
     assert(target.run() === 'original-patched', 'session patch behavior was not observed');
+    const timeout = globalThis.setTimeout(() => {}, 60_000);
+    const interval = globalThis.setInterval(() => {}, 60_000);
+    timeout?.unref?.();
+    interval?.unref?.();
   } finally {
-    sessions.endGameSession();
+    cleanup = sessions.endGameSession();
   }
   assert(target.run === original && target.run() === 'original', 'session patch did not roll back');
+  assert(cleanup.hadSession === true, 'session cleanup report did not describe an active session');
+  assert(cleanup.trackedTimeouts === 1 && cleanup.timeoutCancelAttempts === 1 && cleanup.timeoutCancelFailures === 0, 'session timeout cleanup was not verified');
+  assert(cleanup.trackedIntervals === 1 && cleanup.intervalCancelAttempts === 1 && cleanup.intervalCancelFailures === 0, 'session interval cleanup was not verified');
+  assert(cleanup.patchRestoreFailures === 0, 'session patch cleanup reported a failure');
 
   return {
     schema: 1,
@@ -125,6 +134,7 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
       mediaPolicy: 'pass',
       saveContract: 'pass',
       rollback: 'pass',
+      sessionCleanup: 'pass',
     },
     evidence: {
       profileId: port.profile.id,
@@ -132,6 +142,15 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
       scripts: port.scriptGraph.paths,
       save: { directory: port.contracts.save.directory, extension: port.contracts.save.extension, roundTrip: expectedPath },
       media: port.contracts.media,
+      sessionCleanup: {
+        trackedTimeouts: cleanup.trackedTimeouts,
+        trackedIntervals: cleanup.trackedIntervals,
+        timeoutCancelAttempts: cleanup.timeoutCancelAttempts,
+        intervalCancelAttempts: cleanup.intervalCancelAttempts,
+        timeoutCancelFailures: cleanup.timeoutCancelFailures,
+        intervalCancelFailures: cleanup.intervalCancelFailures,
+        patchRestoreFailures: cleanup.patchRestoreFailures,
+      },
     },
   };
 }
