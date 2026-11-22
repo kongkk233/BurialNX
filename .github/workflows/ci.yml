@@ -179,9 +179,12 @@ jobs:
         with:
           name: native-rebuild-evidence
           path: .
-      - name: Verify clean reproducible release
+      - name: Build debug NRO for release artifact attestation
+        run: npm run build -- --debug
+      - name: Verify clean reproducible release artifact set
         env:
           BURIALNX_REUSE_BROWSER_REPORT: '1'
+          BURIALNX_REQUIRE_DEBUG_ARTIFACT: '1'
         run: npm run verify:release
       - name: Print release evidence summary
         run: |
