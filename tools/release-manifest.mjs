@@ -74,20 +74,20 @@ async function reproducibilityReport(project) {
     return JSON.parse(await readFile(resolve(project, 'reproducibility.json'), 'utf8'));
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
-    return { schema: 1, status: 'not-run', byteIdentical: false, method: 'two independent host NRO builds from the same clean checkout' };
+    return { schema: 2, status: 'not-run', gitDirty: true, byteIdentical: false, method: 'two independent host NRO builds from the same clean checkout' };
   }
 }
 
 async function neutralSmokeReport(project) {
   try {
     const report = JSON.parse(await readFile(resolve(project, 'neutral-smoke.json'), 'utf8'));
-    if (report.schema !== 1 || report.tool !== 'smoke' || report.smokeMode !== 'neutral-port-contract') {
+    if (report.schema !== 2 || report.tool !== 'smoke' || report.smokeMode !== 'neutral-port-contract') {
       throw new Error('neutral-smoke.json has an invalid report identity');
     }
     return report;
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
-    return { schema: 1, status: 'not-run', tool: 'smoke', smokeMode: 'neutral-port-contract', fixture: 'tests/fixtures/neutral-mv/www' };
+    return { schema: 2, status: 'not-run', gitDirty: true, tool: 'smoke', smokeMode: 'neutral-port-contract', fixture: 'tests/fixtures/neutral-mv/www' };
   }
 }
 
