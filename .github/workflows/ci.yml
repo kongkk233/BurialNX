@@ -104,8 +104,9 @@ jobs:
           echo "${NODE_ARCHIVE_SHA256}  .native-node/${archive}" | sha256sum --check --strict
           tar -xJf ".native-node/${archive}" --strip-components=1 -C .native-node
           echo "$GITHUB_WORKSPACE/.native-node/bin" >> "$GITHUB_PATH"
-          .native-node/bin/node --version
-          .native-node/bin/npm --version
+          export PATH="$GITHUB_WORKSPACE/.native-node/bin:$PATH"
+          node --version
+          npm --version
       - name: Install native build dependencies
         shell: bash
         run: npm ci --ignore-scripts --no-audit --no-fund
