@@ -83,6 +83,16 @@ test('generic package runtime acceptance executes scripts without neutral marker
   assert.equal(result.status, 'pass');
   assert.equal(result.executedGameScripts, true);
   assert.equal(result.runtimeBehavior, 'observed');
+  assert.deepEqual(result.declaredRuntime, { kind: 'nwjs', version: 'fixture' });
+  assert.equal(result.actualExecution.mode, 'host-runtime');
+  assert.equal(result.actualExecution.engine, 'vm-host-fixture');
+  assert.equal(result.actualExecution.version, process.version);
+  assert.equal(result.actualExecution.status, 'observed');
+  assert.equal(result.actualExecution.externalRuntime.kind, 'nwjs');
+  assert.equal(result.actualExecution.externalRuntime.version, 'fixture');
+  assert.equal(result.actualExecution.externalRuntime.status, 'not-verified');
+  assert.match(result.actualExecution.externalRuntime.reason, /no external runtime process was launched or version-verified/);
+  assert.notEqual(result.actualExecution.externalRuntime.status, 'verified');
   assert.equal(result.evidence.neutralMarkerRequired, false);
   assert.equal(result.evidence.startup, 'scene-boot');
   assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);

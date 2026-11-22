@@ -5,6 +5,27 @@ import { validateBrowserReport } from './browser-report.mjs';
 
 const project = resolve('.');
 const manifestPath = resolve(project, 'release-manifest.json');
+
+function verifyPackageRuntimeEvidence(report, label) {
+  if (!report || typeof report !== 'object') throw new Error(`${label} is missing`);
+  const declared = report.declaredRuntime;
+  if (!declared || typeof declared.kind !== 'string' || !['nwjs', 'browser'].includes(declared.kind)) {
+    throw new Error(`${label}.declaredRuntime.kind is invalid`);
+  }
+  if (declared.version !== null && typeof declared.version !== 'string') {
+    throw new Error(`${label}.declaredRuntime.version must be a string or null`);
+  }
+  const actual = report.actualExecution;
+  if (!actual || actual.mode !== 'host-runtime' || actual.engine !== 'vm-host-fixture' || typeof actual.version !== 'string' || actual.version.length === 0 || actual.status !== 'observed' || typeof actual.reason !== 'string' || actual.reason.length === 0) {
+    throw new Error(`${label}.actualExecution does not describe observed vm host execution`);
+  }
+  const external = actual.externalRuntime;
+  if (!external || external.kind !== declared.kind || external.version !== declared.version || external.status !== 'not-verified' || typeof external.reason !== 'string' || external.reason.length === 0) {
+    throw new Error(`${label}.actualExecution.externalRuntime must remain not-verified`);
+  }
+  if (external.status === 'verified' || actual.status === 'verified') throw new Error(`${label} contains an unearned verified runtime claim`);
+}
+
 const actual = await generateManifest('burialnx.nro', { project, write: false });
 const stored = JSON.parse(await readFile(manifestPath, 'utf8'));
 
@@ -35,6 +56,8 @@ if (stored.nacp?.title !== actual.nacp.title || stored.nacp?.id !== actual.nacp.
 if (JSON.stringify(stored.packageAcceptance) !== JSON.stringify(actual.packageAcceptance)) throw new Error('release manifest package acceptance is stale');
 if (actual.packageAcceptance.status !== 'pass' || actual.packageAcceptance.executedGameScripts !== false || actual.packageAcceptance.runtimeBehavior !== 'not-observed') throw new Error('generic package contract acceptance gate did not pass');
 if (JSON.stringify(stored.packageRuntimeAcceptance) !== JSON.stringify(actual.packageRuntimeAcceptance)) throw new Error('release manifest package runtime acceptance is stale');
+verifyPackageRuntimeEvidence(stored.packageRuntimeAcceptance, 'stored.packageRuntimeAcceptance');
+verifyPackageRuntimeEvidence(actual.packageRuntimeAcceptance, 'actual.packageRuntimeAcceptance');
 if (actual.packageRuntimeAcceptance.status !== 'pass' || actual.packageRuntimeAcceptance.executedGameScripts !== true || actual.packageRuntimeAcceptance.runtimeBehavior !== 'observed' || actual.packageRuntimeAcceptance.evidence?.neutralMarkerRequired !== false) throw new Error('generic package runtime acceptance gate did not pass');
 if (JSON.stringify(stored.hostAcceptance) !== JSON.stringify(actual.hostAcceptance)) throw new Error('release manifest host acceptance is stale');
 if (JSON.stringify(stored.overlayAcceptance) !== JSON.stringify(actual.overlayAcceptance)) throw new Error('release manifest overlay acceptance is stale');

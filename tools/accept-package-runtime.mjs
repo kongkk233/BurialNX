@@ -48,6 +48,23 @@ export async function acceptPackageRuntime({ gameRoot = fixture, modRoot = null 
     fixture: gameRoot,
     executedGameScripts: true,
     runtimeBehavior: 'observed',
+    declaredRuntime: {
+      kind: port.profile.runtime.kind,
+      version: port.profile.runtime.version ?? null,
+    },
+    actualExecution: {
+      mode: 'host-runtime',
+      engine: 'vm-host-fixture',
+      version: process.version,
+      status: 'observed',
+      reason: 'ordered game scripts executed in the Node vm host fixture',
+      externalRuntime: {
+        kind: port.profile.runtime.kind,
+        version: port.profile.runtime.version ?? null,
+        status: 'not-verified',
+        reason: 'no external runtime process was launched or version-verified',
+      },
+    },
     checks: {
       profile: 'pass',
       entry: 'pass',
