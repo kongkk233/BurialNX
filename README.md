@@ -93,10 +93,11 @@ npm ci
 npm run profile:validate -- profiles/examples/minimal-mv.json
 npm run port:check -- --game-root tests/fixtures/neutral-mv/www
 npm run accept:host       # neutral fixture contract; host-only
+npm run smoke:neutral     # same neutral contract through the smoke entrypoint
 npm test                  # host regression tests; not hardware validation
 npm run typecheck         # production TypeScript module/bundle boundary
 npm run build             # release NRO
-npm run verify:release    # host gates + tests + build + release manifest
+npm run verify:release    # all host gates + clean/repro build + release manifest
 ```
 
 Profiles are described by [`profiles/schema.json`](profiles/schema.json), with a neutral example at [`profiles/examples/minimal-mv.json`](profiles/examples/minimal-mv.json). `createMovieResolver` accepts profile-derived media policy while retaining the default MP4/WebM and `-l` fallback behavior when no profile is supplied.
