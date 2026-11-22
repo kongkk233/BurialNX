@@ -1,9 +1,10 @@
 # Release validation
 
-`npm run verify:release` runs host tests, the controlled TypeScript module/bundle check, builds the release NRO, checks the NRO structural header, and writes `release-manifest.json`. The manifest records package version, git commit, whether the worktree was dirty, a deterministic source-tree SHA-256, Node/npm versions, lockfile SHA-256, NRO SHA-256, runtime executable digest (or an explicit null), NACP source summary, and honest validation states. A dirty manifest is useful for local review but must not be published as the final release provenance; generate the final artifact from the clean `main` commit.
+`npm run verify:release` first runs the executable profile validator, the neutral `port:check`, and `accept:host`; it then runs host tests, the controlled TypeScript module/bundle check, builds the release NRO, checks the NRO structural header, and writes `release-manifest.json`. The manifest records package version, git commit, whether the worktree was dirty, a deterministic source-tree SHA-256, Node/npm versions, lockfile SHA-256, NRO SHA-256, runtime executable digest (or an explicit null), NACP source summary, and the neutral host acceptance checks. A dirty manifest is useful for local review but must not be published as the final release provenance; generate the final artifact from the clean `main` commit.
 
 Validation levels:
 
+- **Port contract**: `npm run profile:validate`, `npm run port:check`, and `npm run accept:host`; this uses only the repository's neutral fixture and is explicitly host-only.
 - **Host**: `npm test`; no real game directory and no hardware.
 - **Build/typecheck**: reproducible dependency install with `npm ci`, NRO packaging, and production graph resolution.
 - **Browser**: optional `npm run test:movie:browser`; requires browser/media support.

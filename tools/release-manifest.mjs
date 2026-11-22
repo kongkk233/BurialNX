@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { resolve, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { checkVideoRuntime, pinnedCode } from './check-video-runtime.mjs';
+import { acceptHost } from './accept-host.mjs';
 
 const ASSET_HEADER_SIZE = 0x38;
 const NACP_TITLE_SIZE = 0x200;
@@ -76,6 +77,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   const packageJson = JSON.parse(await readFile(resolve(project, 'package.json'), 'utf8'));
   const runtimeManifest = JSON.parse(await readFile(resolve(project, 'runtime/manifest.json'), 'utf8'));
   const nacp = nacpSummary(buffer, layout);
+  const hostAcceptance = await acceptHost({ gameRoot: resolve(project, 'tests/fixtures/neutral-mv/www') });
   const lockfile = await readFile(resolve(project, 'package-lock.json'));
   const gitCommit = command('git', ['rev-parse', 'HEAD'], project);
   const gitStatus = command('git', ['status', '--porcelain=v1', '--untracked-files=all'], project);
@@ -95,9 +97,18 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       runtimeExecutable: { sha256: digest(buffer.subarray(0, layout.nroSize)), expectedSha256: pinnedCode, source: 'computed from final NRO executable section' },
     },
     nacp,
+    hostAcceptance: {
+      status: hostAcceptance.status,
+      environment: hostAcceptance.environment,
+      checks: hostAcceptance.checks,
+      fixture: relative(project, resolve(project, 'tests/fixtures/neutral-mv/www')),
+    },
     validation: {
       structural: 'pass',
       runtime: 'pass',
+      profile: hostAcceptance.checks.profile,
+      portCheck: hostAcceptance.checks.entry === 'pass' && hostAcceptance.checks.scriptGraph === 'pass' ? 'pass' : 'fail',
+      acceptHost: hostAcceptance.status,
       npmTest: 'run by verify:release',
       typecheck: 'run by verify:release',
       smoke: 'not run by manifest generator',

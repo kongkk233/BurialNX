@@ -1,6 +1,6 @@
 // Original optional diagnostic. No microphone, network, images, PCM or game saves are collected.
 (() => {
-  const schema = 'burialnx-device-check/1', build = '0.1.6-cg.6';
+  const schema = 'burialnx-device-check/1', build = '0.2.0';
   const dir = 'sdmc:/switch/burialnx/CG-CHECK';
   const options = {
     reference: [{id:'ref-mp4',file:'sync.mp4',reference:true},{id:'ref-webm',file:'sync.webm',reference:true}],

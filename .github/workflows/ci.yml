@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    name: Host validation (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate example profile
+        run: npm run profile:validate -- profiles/examples/minimal-mv.json
+      - name: Check neutral port contract
+        run: npm run port:check -- --game-root tests/fixtures/neutral-mv/www
+      - name: Run neutral host acceptance
+        run: npm run accept:host
+      - name: Run host tests
+        run: npm test
+      - name: Typecheck production graph
+        run: npm run typecheck

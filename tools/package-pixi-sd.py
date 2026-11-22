@@ -17,7 +17,7 @@ def original(name, digest):
 
 nro = (root/'burialnx.nro').read_bytes(); executable = struct.unpack_from('<I', nro, 24)[0]
 nacp = executable + struct.unpack_from('<Q', nro, executable+24)[0]
-if nro[nacp+0x3060:nacp+0x3070].split(b'\0')[0] != b'0.1.6-cg.6': raise ValueError('Build cg.6 before packaging')
+if nro[nacp+0x3060:nacp+0x3070].split(b'\0')[0] != b'0.2.0': raise ValueError('Build the current Port Kit release before packaging')
 items = {'switch/burialnx/burialnx.nro':nro, '安装与验收.md':(root/'docs/movie-playback-zh.md').read_bytes(),
  'licenses/NOTICE.md':(root/'NOTICE.md').read_bytes(), 'licenses/BurialNX-AGPL.txt':(root/'LICENSE').read_bytes(),
  'licenses/nx.js-MIT.txt':(root/'LICENSES/nx.js-MIT.txt').read_bytes()}

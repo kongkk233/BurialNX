@@ -72,6 +72,7 @@ try {
   await import('../tests/library.test.mjs');
   await import('../tests/ini.test.mjs');
   await import('../tests/nacp-patch.test.mjs');
+  await import('../tests/port-cli.test.mjs');
 } finally {
   await rm(tmpDir, { recursive: true, force: true });
 }

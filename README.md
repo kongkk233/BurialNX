@@ -4,17 +4,15 @@
 
 BurialNX is a Nintendo Switch homebrew application and **BurialNX Port Kit** for RPG Maker MV/NW.js games. The port contract is expressed through a validated, game-neutral Port Profile; the repository contains no commercial game assets. See the [porting guide](docs/porting-guide.md) to adapt a legally obtained game package.
 
+> **Trusted-package warning:** BurialNX executes game and mod JavaScript in the same nx.js runtime as the loader. It is **not a sandbox** and does not guarantee offline execution; only run packages and mods you trust. See [SECURITY.md](SECURITY.md).
+
 ---
 
-## Local cutscene build: 0.1.6-cg.6
+## Port Kit release: 0.2.0
 
-cg.6 preserves the cg.5 ARM64 runtime and also sends separate game audio elements through the native audio decoder. [独立配音自测](docs/separate-audio-zh.md).
+This release packages the pinned ARM64 nx.js media runtime and the game-neutral loader contracts for RPG Maker MV/NW.js ports. The media layer supports independent game audio elements, sibling MP4/WebM fallback, unequal audio/video timelines, and detached `<video><source>` inputs. The synthetic fixtures and native-runtime provenance are documented in [runtime validation](runtime/README.md), [movie playback validation](docs/movie-playback-zh.md), and [sprite verification](docs/pixi-movies-zh.md).
 
-cg.5 keeps the movie running if the last audio sample precedes the last picture, and holds the final picture while a longer audio track finishes. Includes an original unequal-track MV event check. [片尾测试说明](docs/track-tails-zh.md).
-
-cg.4 also fixes native startup audio packet loss: decoding starts after the audio node is installed (no silence padding or seek workaround). [Native sources & reproducible build](runtime/README.md).
-
-This local fork of v0.1.6 connects MV's `GameVideo` to the pinned nx.js native video decoder and audio graph. Supports detached `<video><source>` inputs for MV's stock PixiJS 4.5.4 CanvasRenderer. The card includes standalone fullscreen and in-scene sprite checks. [Sprite verification](docs/pixi-movies-zh.md). [安装、测试与限制（中文）](docs/movie-playback-zh.md). Hardware validation is still required for a particular game/console; this is not an upstream release.
+The repository's media fixtures are original, synthetic test inputs; no commercial game assets are included. Hardware validation is still required for a particular permitted game package and console; host acceptance is not a physical-device claim.
 
 ## 📸 Screenshots
 
@@ -92,10 +90,13 @@ Options are fully translated — Always Dash, BGM/SFX Volume, On/Off — using t
 
 ```bash
 npm ci
-npm test                 # host regression tests; not hardware validation
-npm run typecheck        # production TypeScript module/bundle boundary
-npm run build            # release NRO
-npm run verify:release   # tests + typecheck + build + release-manifest.json
+npm run profile:validate -- profiles/examples/minimal-mv.json
+npm run port:check -- --game-root tests/fixtures/neutral-mv/www
+npm run accept:host       # neutral fixture contract; host-only
+npm test                  # host regression tests; not hardware validation
+npm run typecheck         # production TypeScript module/bundle boundary
+npm run build             # release NRO
+npm run verify:release    # host gates + tests + build + release manifest
 ```
 
 Profiles are described by [`profiles/schema.json`](profiles/schema.json), with a neutral example at [`profiles/examples/minimal-mv.json`](profiles/examples/minimal-mv.json). `createMovieResolver` accepts profile-derived media policy while retaining the default MP4/WebM and `-l` fallback behavior when no profile is supplied.
@@ -146,7 +147,7 @@ Profiles are described by [`profiles/schema.json`](profiles/schema.json), with a
 # From this source tree (the upstream tag by itself does not include the movie fix):
 cd BurialNX
 npm ci
-npm test          # includes target-game and movie-host regression tests
+npm test          # neutral fixture, loader, and movie-host regression tests
 npm run build     # → burialnx.nro
 npm run build -- --debug  # → burialnx-debug.nro
 ```

@@ -1,5 +1,5 @@
 {
-  "release": "0.1.6-cg.6",
+  "release": "0.2.0",
   "target": "Nintendo Switch AArch64, static PIE / NRO",
   "upstream": "https://github.com/TooTallNate/nx.js",
   "upstreamTag": "v1.0.0-beta.7",

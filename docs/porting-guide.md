@@ -1,14 +1,26 @@
 # Porting guide
 
+> **Security model:** BurialNX is a trusted-package executor, not a sandbox. Game and mod JavaScript run in the same nx.js runtime as the loader and may reach native filesystem/network APIs. Only run packages and mods you trust; see [SECURITY.md](../SECURITY.md).
+
 BurialNX Port Kit targets legally obtained RPG Maker MV/NW.js game packages. A port input must be a game package the operator is allowed to run, with its own `index.html`, JavaScript, data, image/audio/video assets, and save directory. Do not put commercial assets, private SD paths, saves, keys, or title identifiers in this repository.
 
 ## Workflow
 
 1. Copy the permitted game package into a local staging directory outside this source tree.
-2. Create a profile from `profiles/examples/minimal-mv.json` and validate it with `parsePortProfile`.
-3. Set the entry HTML, runtime compatibility, save extension, and media policy. Keep paths relative and use forward slashes.
-4. Run `npm test`, `npm run typecheck`, and `npm run build`.
-5. Test the resulting NRO with neutral media fixtures before testing the target game.
+2. Create `burialnx.port.json` in the package `www` root (or in an overlay root) from `profiles/examples/minimal-mv.json`.
+3. Validate the profile and package contract with executable host checks:
+
+   ```bash
+   npm ci
+   npm run profile:validate -- /path/to/www/burialnx.port.json
+   npm run port:check -- --game-root /path/to/www
+   npm run accept:host
+   ```
+
+   `port:check` reads the mod profile before the game profile, verifies the entry HTML and ordered local script graph, and rejects external or traversal paths. Add `--mod-root /path/to/mod` to check an overlay; add `--manifest ./port-manifest.json` only when you explicitly want a generated audit file.
+4. Set the entry HTML, runtime compatibility metadata, save contract, and media policy. Keep paths relative and use forward slashes. If `entry.script` is declared, it must already occur in the HTML script graph; the checker does not inject it.
+5. Run `npm test`, `npm run typecheck`, and `npm run verify:release`.
+6. Test the resulting NRO with neutral media fixtures before testing the permitted target package. Host acceptance does not replace native or physical Switch validation.
 
 The profile API is intentionally additive in phase one. Existing launch behavior remains the default when no profile is supplied. In v1, `entry.html`, `assets`, and `media` drive launch behavior; `entry.script`, `runtime`, `compat`, `save`, and `package` are validated metadata and are not silently treated as runtime overrides. The selected mod profile wins over the base game profile, and the control file is read directly rather than through hashed asset lookup or envelope decoding.
 
