@@ -38,7 +38,7 @@ The actual CI report records `buildHost: { platform: "linux", arch: "x64" }`, GC
 - Rebuilt NRO SHA-256: `af2bac9f6d5ce6463c46f2204c4ef9bb513067cf57d44c429f6af3e1419e392f`
 - Rebuilt ELF BuildID: `95f1db2053fc07070d8ac6348dbd5e53dbc17777`
 - Distributed expected executable SHA-256: `d19416181cc10974ac8b44f902fb0232f032f78e38021f7dbce1dcc3c2834cb6`
-- Distributed ELF BuildID: `a7fa807f9fe38328a28c9573fc1d7ddb530c5fc1`
+- Distributed NRO `ModuleId` / ELF BuildID (recomputed from program header offset `0x40`): `a7fa807f9fe38328a28c9573fc1d7ddb530c5fc1`
 - Raw program bytes: `55603200`
 
 Conclusion: native source-to-runtime is **not verified**. The rebuilt executable digest does not equal the distributed expected digest, so the rebuild script fails closed and does not replace `runtime/nxjs-preroll.nro-code.gz`.

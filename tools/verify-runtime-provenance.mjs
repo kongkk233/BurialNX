@@ -6,6 +6,7 @@ import { gunzipSync } from 'node:zlib';
 
 const SHA256 = /^[a-f0-9]{64}$/i;
 const SHA1 = /^[a-f0-9]{40}$/i;
+const BUILD_ID = /^(?:[a-f0-9]{2}){2,32}$/i;
 
 function digest(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
@@ -97,6 +98,41 @@ async function verifyCompressedProgramClaim({ project, claim, pathValue, expecte
     status: actualSha256 === String(expectedSha256).toLowerCase() ? 'pass' : 'fail',
   };
   if (result.status !== 'pass') throw new Error(`${claim} mismatch: ${actualSha256} != ${result.expectedSha256}`);
+  return result;
+}
+
+async function verifyCompressedBuildIdClaim({ project, claim, pathValue, expectedBuildId }) {
+  if (!BUILD_ID.test(String(expectedBuildId ?? ''))) {
+    throw new Error(`${claim} has an invalid ELF BuildID`);
+  }
+  const candidate = projectPath(project, pathValue, `${claim} path`);
+  let compressed;
+  try {
+    compressed = await readFile(candidate);
+  } catch (error) {
+    if (error?.code === 'ENOENT') throw new Error(`${claim} file is missing: ${pathValue}`);
+    throw error;
+  }
+  let program;
+  try {
+    program = gunzipSync(compressed);
+  } catch (error) {
+    throw new Error(`${claim} is not valid gzip: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (program.toString('ascii', 16, 20) !== 'NRO0' || program.byteLength < 0x40 + String(expectedBuildId).length / 2) {
+    throw new Error(`${claim} is missing the NRO header`);
+  }
+  const actualBuildId = program.subarray(0x40, 0x40 + String(expectedBuildId).length / 2).toString('hex');
+  const result = {
+    claim,
+    path: relativeProjectPath(project, candidate),
+    offset: 0x40,
+    expectedBuildId: String(expectedBuildId).toLowerCase(),
+    actualBuildId,
+    bytes: String(expectedBuildId).length / 2,
+    status: actualBuildId === String(expectedBuildId).toLowerCase() ? 'pass' : 'fail',
+  };
+  if (result.status !== 'pass') throw new Error(`${claim} mismatch: ${actualBuildId} != ${result.expectedBuildId}`);
   return result;
 }
 
@@ -196,6 +232,12 @@ export async function verifyRuntimeProvenance({ project = resolve('.'), manifest
       pathValue: 'runtime/nxjs-preroll.nro-code.gz',
       expectedSha256: runtimeManifest.fixedExeSha256,
       expectedBytes: runtimeManifest.rawProgramBytes,
+    }),
+    await verifyCompressedBuildIdClaim({
+      project: root,
+      claim: 'runtime.armElfBuildId',
+      pathValue: 'runtime/nxjs-preroll.nro-code.gz',
+      expectedBuildId: runtimeManifest.armElfBuildId,
     }),
     await verifyGitBlobClaim({
       project: root,

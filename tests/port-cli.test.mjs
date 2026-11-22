@@ -106,9 +106,11 @@ test('runtime provenance recomputes repository file claims and exposes external 
     'runtime.timelinePatchSha256',
     'runtime.prerollGzipSha256',
     'runtime.fixedExecutableSha256',
+    'runtime.armElfBuildId',
     'runtime.distributedArtifactGitBlobSha1',
   ]);
   assert.equal(result.verified.find(claim => claim.claim === 'runtime.fixedExecutableSha256').actualSha256, 'd19416181cc10974ac8b44f902fb0232f032f78e38021f7dbce1dcc3c2834cb6');
+  assert.equal(result.verified.find(claim => claim.claim === 'runtime.armElfBuildId').actualBuildId, 'a7fa807f9fe38328a28c9573fc1d7ddb530c5fc1');
   assert.equal(result.verified.at(-1).actualSha1, 'd58651b6478db5ab4a90a2b8c3482b0efdc26102');
   assert.ok(result.unverified.some(claim => claim.claim === 'runtime.historicalPackageEvidence'));
   assert.ok(result.unverified.some(claim => claim.claim === 'runtime.distributedArtifactSourceCommit'));
