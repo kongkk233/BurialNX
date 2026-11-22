@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { checkPort, containedFile, safeRelative } from './check-port.mjs';
 import { loadBundledModule } from './ts-bundle.mjs';
 import { entryScriptEvidence } from './entry-script-evidence.mjs';
+import { nodeCompatEvidence } from './node-compat-evidence.mjs';
 
 const fixture = resolve('tests/fixtures/generic-mv/www');
 
@@ -42,6 +43,7 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
   const mediaApi = await loadBundledModule('src/video-source.ts');
   const savesApi = await loadBundledModule('src/saves.ts');
   const sessions = await loadBundledModule('src/game-session.ts');
+  const nodeCompat = await nodeCompatEvidence();
 
   const entryBytes = await containedFile(port.roots[port.entry.root], port.entry.path, 'entry HTML', false);
   const entry = new TextDecoder().decode(entryBytes);
@@ -138,6 +140,7 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
       saveContract: 'pass',
       rollback: 'pass',
       sessionCleanup: 'pass',
+      nodeCompat: nodeCompat.status,
     },
     evidence: {
       profileId: port.profile.id,
@@ -146,6 +149,7 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
       entryScript,
       save: { directory: port.contracts.save.directory, extension: port.contracts.save.extension, roundTrip: expectedPath },
       media: port.contracts.media,
+      nodeCompat,
       sessionCleanup: {
         trackedTimeouts: cleanup.trackedTimeouts,
         trackedIntervals: cleanup.trackedIntervals,

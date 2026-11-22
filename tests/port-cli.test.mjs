@@ -76,6 +76,17 @@ test('generic package acceptance does not execute game scripts or require neutra
   assert.equal(result.runtimeBehavior, 'not-observed');
   assert.equal(result.checks.entryScript, 'validated-only');
   assert.equal(result.checks.sessionCleanup, 'pass');
+  assert.equal(result.checks.nodeCompat, 'pass');
+  assert.deepEqual(result.evidence.nodeCompat, {
+    status: 'pass',
+    scope: 'host-shim-contract',
+    execution: 'shim-probe-only',
+    appRootBoundary: { status: 'enforced', outsidePath: 'EPERM' },
+    overlay: { write: 'overlay-only', rename: 'native-overlay-only', replacement: 'overlay-only', packagedSource: 'EPERM' },
+    nativeRename: { required: true, unavailable: 'ENOSYS', failedRenamePreservesSource: true },
+    switchHardware: 'not-verified',
+    externalRuntime: 'not-verified',
+  });
   assert.deepEqual(result.evidence.sessionCleanup, {
     trackedTimeouts: 1,
     trackedIntervals: 1,
