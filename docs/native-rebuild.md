@@ -12,13 +12,16 @@ The distributed native blob is traceable to the historical BurialNX PR commit th
 - Historical/current Git blob SHA-1: `d58651b6478db5ab4a90a2b8c3482b0efdc26102`
 - Current gzip SHA-256: `aed903bf861be6e7baaa9dda3522dfeda60b2c4646a7d7dc9557101247d92874`
 
-The historical manifest records an ARM Mac devkitPro build claim and signed host-tool verification claim, but the repository does not contain the original ARM toolchain binaries, signature transcript, standalone NRO, or build log. The current CI therefore does not upgrade native provenance merely because the distributed blob's Git lineage is known.
+The historical manifest records an ARM Mac devkitPro build claim and signed host-tool verification claim, but the repository does not contain the original ARM toolchain binaries, signature transcript, standalone NRO, or build log. Public devkitPro sources do provide a macOS installation/build path, but not the historical package lock, Apple SDK details, or host-tool snapshot needed for bit-for-bit reproduction. The current CI therefore does not upgrade native provenance merely because the distributed blob's Git lineage is known.
+
+The actual CI report records `buildHost: { platform: "linux", arch: "x64" }`, GCC `15.2.0`, Binutils `2.45.1`, and Node `v22.22.2`. This is an independently reproducible Linux evidence path, not evidence that the historical ARM Mac build was replayed.
 
 ## Pinned rebuild inputs
 
 - Source: nx.js commit `a649611a1a4daca09924cd1a436c7ca786f91592`, downloaded from the immutable [codeload archive](https://codeload.github.com/TooTallNate/nx.js/tar.gz/a649611a1a4daca09924cd1a436c7ca786f91592)
 - Source archive SHA-256: `0477b6b094b69984f97cac3f2a84fef352e2e7bdb01387596425662b2a7622d3`
 - SDK image: `ghcr.io/tootallnate/pacman-packages@sha256:92880d77878639768fe3696800104d68de1dfec65802bf7915689dd7bd718e53`
+- That OCI index resolves to `linux/amd64` image digest `sha256:5c07e95cf5691a91d6782ead058a664a22961cc8786d6588666ca6bb88babde5` plus an attestation; it does not provide a `darwin/arm64` toolchain.
 - CI Node tool: `v22.22.2`, Linux x64 archive SHA-256 `88fd1ce767091fd8d4a99fdb2356e98c819f93f3b1f8663853a2dee9b438068a`
 - Upstream stock release executable SHA-256 (control only): `3fbafb0da26d7ba6e8a2c1be208d575559419b231365debda5046a81ed8df1a6`
 - Rebuilt executable SHA-256: `de6c168e821eadd5af89d9eb47c6a54bd8ea9d39a4be9cce1abc25b3136cb5d5`
