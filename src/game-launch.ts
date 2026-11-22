@@ -76,7 +76,7 @@ export async function launch() {
                 });
                 const profile = profileLoad.profile;
                 const profileSource = profileLoad.source;
-                log(`Port profile: ${profileSource} (${profile.id}); runtime=${profile.runtime.kind}; save=${profile.save.directory}/*${profile.save.extension}; media variants=${profile.media.variantFallback.join(',') || '(none)'}; hashed assets=${profile.assets.hashedLookup ? 'on' : 'off'}; envelope=${profile.assets.envelope?.algorithm || 'none'}`);
+                log(`Port profile: ${profileSource} (${profile.id}); runtime=${profile.runtime.kind}${profile.runtime.version ? `@${profile.runtime.version}` : ''}; compat=mv:${profile.compat.mv ? 'on' : 'off'},nwjs:${profile.compat.nwjs ? 'on' : 'off'},node:${profile.compat.node ? 'on' : 'off'}; save=${profile.save.directory}/*${profile.save.extension}; media variants=${profile.media.variantFallback.join(',') || '(none)'}; hashed assets=${profile.assets.hashedLookup ? 'on' : 'off'}; envelope=${profile.assets.envelope?.algorithm || 'none'}`);
                 const rawAssets = gameAssets(S.selectedGame, S.selectedMod || null, { async read(path) {
                         const bytes = await (Switch as any).readFile(path);
                         if (__DEBUG__ && bytes && /\/data\//i.test(path)) log(`Read game data: ${path} (${bytes.byteLength} bytes)`);
@@ -92,14 +92,19 @@ export async function launch() {
                 if (!index) throw new Error(`Game entry ${entryHtml} is missing`);
                 const scripts = scriptPlan(new TextDecoder().decode(index));
                 log(`Game: ${S.selectedGame}; mod: ${S.selectedMod || 'none'}; shared saves: ${S.sharedSaves}`);
-                setLoadingProgress(0.12, 'Loading fonts and language…');
-                const [, , pngFix] = await Promise.all([languageTable(assets), registerFonts(assets, S.runtime), needsPngFix(log)]);
-                let language = await languageTable(assets);
+                setLoadingProgress(0.12, profile.compat.mv ? 'Loading fonts and language…' : 'Loading game assets…');
+                const [loadedLanguage, , pngFix] = await Promise.all([
+                        profile.compat.mv ? languageTable(assets) : Promise.resolve(null),
+                        profile.compat.mv ? registerFonts(assets, S.runtime) : Promise.resolve(),
+                        profile.compat.mv ? needsPngFix(log) : Promise.resolve(false),
+                ]);
+                let language = loadedLanguage;
+                if (!profile.compat.mv) log('Port profile disabled MV compatibility patches and language/font hooks');
                 let languagePack: LanguagePack | null = null;
                 let imageReader: Reader = assets;
                 S.activeLanguageCode = '';
                 S.languageEntries = [];
-                try {
+                if (profile.compat.mv) try {
                         const scanFs = (Switch as unknown as LanguageScanFs) ?? null;
                         S.languageEntries = scanLanguageFiles(scanFs, S.selectedGame);
                         if (S.languageEntries.length > 0) {
@@ -136,11 +141,22 @@ export async function launch() {
                         hashedLookup: profile.assets.hashedLookup,
                         envelope: profile.assets.envelope,
                 };
-                S.host = createBrowserHost(imageReader, prepareGameScript, log, pngFix, S.directScreen, failRequest,
+                const prepareScript = profile.compat.mv
+                        ? prepareGameScript
+                        : (_path: string, source: string) => source;
+                S.host = createBrowserHost(imageReader, prepareScript, log, pngFix, S.directScreen, failRequest,
                         createMovieResolver(imageReader, mediaRoots, undefined, false, mediaPolicy),
                         createAudioResolver(imageReader, mediaRoots, undefined, mediaPolicy));
-                try { installNodeCompat(S.runtime, (Switch as unknown as SwitchFs) ?? null, { gameRoot: S.selectedGame, log: __DEBUG__ ? log : undefined }); }
-                catch (compatError) { log(`node-compat install failed: ${compatError instanceof Error ? compatError.message : String(compatError)}`); }
+                if (profile.compat.node || profile.compat.nwjs) {
+                        try {
+                                installNodeCompat(S.runtime, (Switch as unknown as SwitchFs) ?? null, {
+                                        gameRoot: S.selectedGame,
+                                        node: profile.compat.node,
+                                        nwjs: profile.compat.nwjs,
+                                        log: __DEBUG__ ? log : undefined,
+                                });
+                        } catch (compatError) { log(`node-compat install failed: ${compatError instanceof Error ? compatError.message : String(compatError)}`); }
+                } else log('Port profile disabled Node.js/NW.js compatibility globals');
                 const total = scripts.length;
                 for (let i = 0; i < total; i++) {
                         const path = scripts[i];
@@ -165,7 +181,7 @@ export async function launch() {
                         return isMouse ? `${i}=${b}` : null;
                 }).filter(Boolean).join(' ');
                 log(`_keymap: mouse buttons = ${mouseBtns || '(none)'}`);
-                installGameCompatibility(S.runtime, S.selectedGame, S.sharedSaves, language, pngFix, km0);
+                if (profile.compat.mv) installGameCompatibility(S.runtime, S.selectedGame, S.sharedSaves, language, pngFix, km0);
                 if (languagePack) {
                         try { await registerLanguageFont(S.runtime, languagePack); }
                         catch (fontError) { log(`Language font install failed: ${fontError instanceof Error ? fontError.message : String(fontError)}`); }

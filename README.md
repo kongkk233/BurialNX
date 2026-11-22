@@ -94,9 +94,11 @@ Options are fully translated — Always Dash, BGM/SFX Volume, On/Off — using t
 
 `npm run accept:host` and `npm run accept:overlay` are separate neutral-fixture deep acceptance checks. They exercise the repository's synthetic neutral runtime contract and are not evidence that a commercial game, native decoder, or Switch hardware has been tested.
 
-`npm run verify:runtime-provenance` recomputes the tracked patch and preroll-runtime blob hashes recorded in `runtime/manifest.json`. Its explicit `not-verified` entries cover external nx.js source, SDK/toolchain, signing, and standalone-artifact claims that are recorded but not reconstructed by this host-only repository. The `port:check` report distinguishes enforced contracts, validated-only declarations, metadata-only fields, and behavior not observed by host checks.
+`npm run verify:runtime-provenance` recomputes the tracked patch and preroll-runtime blob hashes recorded in `runtime/manifest.json`. Its explicit `not-verified` entries cover external nx.js source, SDK/toolchain, signing, and standalone-artifact claims that are recorded but not reconstructed by this host-only repository. The `port:check` report distinguishes enforced contracts (including the `compat.mv`, `compat.node`, and `compat.nwjs` launch switches), validated-only declarations, metadata-only fields, and behavior not observed by host checks.
 
-The desktop `test:movie:browser` probe is required by `verify:release` and also runs as a separate CI job. With `--report browser-validation.json`, it records Chromium version, decoded pixels/PCM results, and the clean checkout commit in the ignored release evidence. This covers synthetic desktop MP4/WebM only; it does not imply native Switch, hardware, or commercial-game playback.
+The desktop `test:movie:browser` probe is required by `verify:release` and also runs as a separate CI job. With `--report browser-validation.json`, it records Chromium version, decoded pixels/PCM results, and the clean checkout commit in the ignored release evidence. CI uploads that exact report and the release job downloads it with `BURIALNX_REUSE_BROWSER_REPORT=1`, so the release gate cannot silently use a different browser run. This covers synthetic desktop MP4/WebM only; it does not imply native Switch, hardware, or commercial-game playback.
+
+The manual Build NRO workflow builds `burialnx.nro` from the checked-out release tag before verification and publishes only that freshly built release artifact (plus the separately built debug NRO); it does not treat an absent prebuilt binary as a release input.
 
 ## 🧰 Port Kit commands
 

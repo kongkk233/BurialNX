@@ -74,6 +74,25 @@ test('installNodeCompat installs all expected globals', () => {
         assert.equal(r.module.exports, r.exports);
 });
 
+test('installNodeCompat honors profile Node.js and NW.js capability switches', () => {
+        const nodeOnly: Record<string, unknown> = {};
+        installNodeCompat(nodeOnly, null, { gameRoot: GAME, node: true, nwjs: false });
+        assert.equal(typeof nodeOnly.require, 'function');
+        assert.equal(nodeOnly.nw, undefined);
+        assert.equal((nodeOnly as any).require('nw'), undefined);
+
+        const nwOnly: Record<string, unknown> = {};
+        installNodeCompat(nwOnly, null, { gameRoot: GAME, node: false, nwjs: true });
+        assert.equal(nwOnly.require, undefined);
+        assert.equal(typeof (nwOnly as any).nw?.Window, 'object');
+
+        const none: Record<string, unknown> = {};
+        installNodeCompat(none, null, { gameRoot: GAME, node: false, nwjs: false });
+        assert.equal(none.require, undefined);
+        assert.equal(none.process, undefined);
+        assert.equal(none.nw, undefined);
+});
+
 test('require("fs") writes go to the per-game overlay, never the game dir', () => {
         const sw = fakeSwitch({ [`${APPROOT}/orig.json`]: '{"orig":true}' });
         const r = fresh(sw);

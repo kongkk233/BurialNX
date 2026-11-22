@@ -18,6 +18,10 @@ export interface SwitchFs {
 export interface NodeCompatOptions {
         /** Absolute SD path of the game www root (the loader's `selectedGame`). */
         gameRoot: string;
+        /** Install Node builtins and globals (default: true). */
+        node?: boolean;
+        /** Install NW.js globals/modules (default: true). */
+        nwjs?: boolean;
         /** Optional logger (debug builds). */
         log?: (s: string) => void;
 }
@@ -573,6 +577,8 @@ export interface NodeCompatRuntime {
 /** Install Node/NW.js compatibility globals on the runtime, preserving any already present. */
 export function installNodeCompat(runtime: any, switchFs: SwitchFs | null, opts: NodeCompatOptions): NodeCompatRuntime {
         const { gameRoot, log } = opts;
+        const enableNode = opts.node !== false;
+        const enableNwjs = opts.nwjs !== false;
         const appRoot = appRootFrom(gameRoot);
 
         const fs = makeFs(switchFs, opts);
@@ -639,12 +645,18 @@ export function installNodeCompat(runtime: any, switchFs: SwitchFs | null, opts:
         register('timers', { setTimeout, clearTimeout, setInterval, clearInterval, setImmediate: (fn: () => void) => setTimeout(fn, 0), clearImmediate: (id: any) => clearTimeout(id) });
         register('assert', { ok: (v: unknown) => { if (!v) throw new Error('Assertion failed'); }, equal: (a: unknown, b: unknown) => { if (a !== b) throw new Error('Assertion failed'); }, notEqual: () => {}, fail: (m?: string) => { throw new Error(m || 'fail'); } });
         register('string_decoder', { StringDecoder: class { write(s: any) { return typeof s === 'string' ? s : new TextDecoder().decode(s); } end(s: any) { return s ? this.write(s) : ''; } } });
+        if (!enableNode) builtins.clear();
 
         const manifest = readManifest(fs, appRoot);
         const processObj = makeProcess(appRoot, switchFs, log);
         const nwObj = makeNw(appRoot, switchFs, manifest, log);
-        register('nw.gui', nwObj);
-        register('nw', nwObj);
+        if (enableNwjs) {
+                register('nw.gui', nwObj);
+                register('nw', nwObj);
+        } else {
+                builtins.delete('nw.gui');
+                builtins.delete('nw');
+        }
 
         function requireRelative(id: string, fromDir: string): any {
                 const candidates = [id, `${id}.js`, `${id}.json`, `${id}/index.js`, `${id}/index.json`];
@@ -675,6 +687,7 @@ export function installNodeCompat(runtime: any, switchFs: SwitchFs | null, opts:
         function makeRequire(fromDir: string): ((id: string) => any) & { cache: Map<string, any>; resolve: (id: string) => string } {
                 const req: any = (id: string) => {
                         if (typeof id !== 'string' || !id) return stubModule();
+                        if (!enableNwjs && (id === 'nw' || id === 'nw.gui')) return undefined;
                         if (builtins.has(id)) return builtins.get(id);
                         // Relative (./ ../), absolute (/), or Windows-drive-relative require.
                         if (id.startsWith('./') || id.startsWith('../') || id.startsWith('/') || /^[a-z]:[\\/]/i.test(id)) {
@@ -693,18 +706,20 @@ export function installNodeCompat(runtime: any, switchFs: SwitchFs | null, opts:
         const rootRequire = makeRequire(appRoot);
 
         const g = runtime;
-        if (typeof g.require === 'undefined') g.require = rootRequire;
-        if (typeof g.process === 'undefined') g.process = processObj;
-        if (typeof g.Buffer === 'undefined') g.Buffer = MiniBuffer;
-        if (typeof g.module === 'undefined') g.module = { exports: {}, id: '<main>', filename: `${appRoot}/index.html`, loaded: true, children: [], paths: [], require: rootRequire };
-        if (typeof g.exports === 'undefined') g.exports = g.module.exports;
-        if (typeof g.global === 'undefined') g.global = runtime;
-        if (typeof g.__dirname === 'undefined') g.__dirname = appRoot;
-        if (typeof g.__filename === 'undefined') g.__filename = `${appRoot}/index.html`;
-        if (typeof g.nw === 'undefined') g.nw = nwObj;
-        if (typeof g.globalThis === 'undefined') g.globalThis = runtime;
-        // Reflect that `module.exports` and `exports` should follow each other.
-        g.module.exports = g.exports;
+        if (enableNode) {
+                if (typeof g.require === 'undefined') g.require = rootRequire;
+                if (typeof g.process === 'undefined') g.process = processObj;
+                if (typeof g.Buffer === 'undefined') g.Buffer = MiniBuffer;
+                if (typeof g.module === 'undefined') g.module = { exports: {}, id: '<main>', filename: `${appRoot}/index.html`, loaded: true, children: [], paths: [], require: rootRequire };
+                if (typeof g.exports === 'undefined') g.exports = g.module.exports;
+                if (typeof g.global === 'undefined') g.global = runtime;
+                if (typeof g.__dirname === 'undefined') g.__dirname = appRoot;
+                if (typeof g.__filename === 'undefined') g.__filename = `${appRoot}/index.html`;
+                if (typeof g.globalThis === 'undefined') g.globalThis = runtime;
+                // Reflect that `module.exports` and `exports` should follow each other.
+                g.module.exports = g.exports;
+        }
+        if (enableNwjs && typeof g.nw === 'undefined') g.nw = nwObj;
 
         return { require: rootRequire, process: processObj, Buffer: MiniBuffer, module: g.module, exports: g.exports, global: runtime, __dirname: appRoot, __filename: `${appRoot}/index.html`, nw: nwObj };
 }

@@ -27,10 +27,10 @@ npm run build -- --default-icon
 npm run build -- --debug --default-icon
 ```
 
-脚本将上游干净目录复制到**新**目录，校验补丁前/后源码，将原版官方 NRO 中未修改的 `runtime.js`、字体和 source map 作为输入，使用 `make` 正常交叉编译。使用规范化编译路径避免将本机目录写入成品。它保留独立构建结果，不主动覆盖工程。若使用其他编译器/静态库产出不同 digest，应先审查，不能通过修改预期 hash 假装是同一构建。这次在两个不同工作目录得到相同 ARM64 程序段与相同独立 runtime NRO。
+脚本将上游干净目录复制到**新**目录，校验补丁前/后源码，将原版官方 NRO 中未修改的 `runtime.js`、字体和 source map 作为输入，使用 `make` 正常交叉编译。使用规范化编译路径避免将本机目录写入成品。它保留独立构建结果，不主动覆盖工程。若使用其他编译器/静态库产出不同 digest，应先审查，不能通过修改预期 hash 假装是同一构建。脚本会在最终 ARM64 程序段 hash 与 `runtime/manifest.json` 的 distributed digest 不一致时 fail closed，并保留独立输出供人工复核，不替换已分发 runtime；当前仓库/CI 的 native source-to-runtime rebuild 仍标为 `not verified`。
 
 ## 测试边界
 
 `tests/movie-preroll-probe.cc` 允许人为推迟音轨接入，检查起始 PCM、取消、无声影片和无音频输出行为。`tests/packed-movie/compare-movie-content.py` 将最终录制与源素材独立对比：48 kHz、每个声道每毫秒计算 RMS，在三个门限测四段音的实际持续时间，也在精灵内部比较对应 RGB 画面。24 fps 两个独立时钟与重复白帧不能证明逐像素、逐帧无损；AAC 录制也不是位精确的 PCM 容器。用 cg.5 做桌面整包测试时，必须对绑定使用按顺序应用两个补丁的 nx.js 源码；宿主会根据 NRO 的原生摘要拒绝错版解码器。
 
-已验证的层级是：原生源头对照、实际交叉构建和文件指纹、桌面执行包内应用/媒体 JS 后读取的最终像素与声音。**未在实体 Nintendo Switch 上运行，未验证任意商业游戏、物理扬声器/HDMI 或特定机器的输出时延。**
+当前可复核的层级是：仓库内补丁/压缩运行时 blob 的文件指纹，以及桌面执行包内应用/媒体 JS 后读取的最终像素与声音；native source-to-runtime exact rebuild 仍需与 distributed digest 对齐后才可提升为 `verified`。**未在实体 Nintendo Switch 上运行，未验证任意商业游戏、物理扬声器/HDMI 或特定机器的输出时延。**
