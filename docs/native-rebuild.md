@@ -5,6 +5,7 @@ The pinned amd64 source rebuild is an evidence job, not a release replacement st
 - Source: nx.js commit `a649611a1a4daca09924cd1a436c7ca786f91592`, downloaded from the immutable [codeload archive](https://codeload.github.com/TooTallNate/nx.js/tar.gz/a649611a1a4daca09924cd1a436c7ca786f91592)
 - Source archive SHA-256: `0477b6b094b69984f97cac3f2a84fef352e2e7bdb01387596425662b2a7622d3`
 - SDK image: `ghcr.io/tootallnate/pacman-packages@sha256:92880d77878639768fe3696800104d68de1dfec65802bf7915689dd7bd718e53`
+- CI Node tool: `v22.22.2`, Linux x64 archive SHA-256 `88fd1ce767091fd8d4a99fdb2356e98c819f93f3b1f8663853a2dee9b438068a`
 - Rebuilt executable SHA-256: `de6c168e821eadd5af89d9eb47c6a54bd8ea9d39a4be9cce1abc25b3136cb5d5`
 - Distributed expected executable SHA-256: `d19416181cc10974ac8b44f902fb0232f032f78e38021f7dbce1dcc3c2834cb6`
 - Raw program bytes: `55603200`
