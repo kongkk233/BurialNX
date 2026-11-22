@@ -6,8 +6,12 @@ The pinned amd64 source rebuild is an evidence job, not a release replacement st
 - Source archive SHA-256: `0477b6b094b69984f97cac3f2a84fef352e2e7bdb01387596425662b2a7622d3`
 - SDK image: `ghcr.io/tootallnate/pacman-packages@sha256:92880d77878639768fe3696800104d68de1dfec65802bf7915689dd7bd718e53`
 - CI Node tool: `v22.22.2`, Linux x64 archive SHA-256 `88fd1ce767091fd8d4a99fdb2356e98c819f93f3b1f8663853a2dee9b438068a`
+- Upstream stock release executable SHA-256 (control only): `3fbafb0da26d7ba6e8a2c1be208d575559419b231365debda5046a81ed8df1a6`
 - Rebuilt executable SHA-256: `de6c168e821eadd5af89d9eb47c6a54bd8ea9d39a4be9cce1abc25b3136cb5d5`
+- Rebuilt NRO SHA-256: `af2bac9f6d5ce6463c46f2204c4ef9bb513067cf57d44c429f6af3e1419e392f`
+- Rebuilt ELF BuildID: `95f1db2053fc07070d8ac6348dbd5e53dbc17777`
 - Distributed expected executable SHA-256: `d19416181cc10974ac8b44f902fb0232f032f78e38021f7dbce1dcc3c2834cb6`
+- Distributed ELF BuildID: `a7fa807f9fe38328a28c9573fc1d7ddb530c5fc1`
 - Raw program bytes: `55603200`
 
 Conclusion: native source-to-runtime is **not verified**. The rebuilt executable digest does not equal the distributed expected digest, so the rebuild script fails closed and does not replace `runtime/nxjs-preroll.nro-code.gz`.
