@@ -7,6 +7,7 @@ import { checkVideoRuntime, pinnedCode } from './check-video-runtime.mjs';
 import { acceptHost } from './accept-host.mjs';
 import { acceptPackage } from './accept-package.mjs';
 import { verifyRuntimeProvenance } from './verify-runtime-provenance.mjs';
+import { BROWSER_REPORT_PATH, readBrowserValidationReport } from './browser-report.mjs';
 
 const ASSET_HEADER_SIZE = 0x38;
 const NACP_TITLE_SIZE = 0x200;
@@ -110,6 +111,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   const overlayAcceptance = await acceptHost({ gameRoot: neutralFixture, modRoot: modFixture });
   const neutralSmoke = await neutralSmokeReport(project);
   const reproducibility = await reproducibilityReport(project);
+  const browserValidation = await readBrowserValidationReport(project);
   const lockfile = await readFile(resolve(project, 'package-lock.json'));
   const gitCommit = command('git', ['rev-parse', 'HEAD'], project);
   const gitStatus = command('git', ['status', '--porcelain=v1', '--untracked-files=all'], project);
@@ -125,6 +127,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
     sourceTreeSha256: sourceTree,
     toolchain: { node: process.version, npm: command('npm', ['--version'], project), lockfileSha256: digest(lockfile) },
     runtimeProvenance,
+    browserValidation: { ...browserValidation, reportPath: BROWSER_REPORT_PATH },
     artifacts: {
       nro: { path: relative(project, absoluteNro), kind: 'release', sha256: digest(buffer), bytes: buffer.byteLength, executableSha256: digest(buffer.subarray(0, layout.nroSize)) },
       runtimeExecutable: { sha256: digest(buffer.subarray(0, layout.nroSize)), expectedSha256: pinnedCode, source: 'computed from final NRO executable section' },
@@ -164,7 +167,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       npmTest: 'run by verify:release',
       typecheck: 'run by verify:release',
       smoke: neutralSmoke.status === 'pass' ? 'neutral-port-contract: pass' : neutralSmoke.status,
-      browser: 'not run',
+      browser: browserValidation.status === 'pass' ? 'desktop-browser: pass' : browserValidation.status,
       native: 'not run',
       hardware: runtimeManifest.hardwarePlaybackObserved === true ? 'observed in runtime manifest' : 'not verified',
     },

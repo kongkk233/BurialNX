@@ -71,7 +71,7 @@ jobs:
       - name: Run desktop media probe
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.path }}
-        run: npm run test:movie:browser
+        run: npm run test:movie:browser -- --report browser-validation.json
 
   release:
     name: Clean reproducible release gate

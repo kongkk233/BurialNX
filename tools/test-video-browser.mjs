@@ -3,16 +3,41 @@
 // remote service, personal browser profile, game files or Switch keys required.
 import { build } from 'esbuild';
 import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const chrome=process.env.CHROME_BIN || ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/usr/bin/google-chrome','/usr/bin/chromium','/usr/bin/chromium-browser'].find(existsSync);
 if (!chrome) throw new Error('Set CHROME_BIN to Chrome/Chromium (desktop validation only)');
+
+function parseReportPath(argv) {
+  const index = argv.indexOf('--report');
+  const value = index >= 0 ? argv[index + 1] : process.env.BURIALNX_BROWSER_REPORT;
+  if (index >= 0 && (!value || value.startsWith('--'))) throw new Error('--report requires a path');
+  if (!value) return null;
+  const report = resolve(root, value);
+  const rel = relative(root, report);
+  if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) throw new Error('--report must stay inside the repository');
+  return report;
+}
+
+function gitEvidence() {
+  const gitCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  const gitDirty = execFileSync('git', ['status', '--porcelain=v1', '--untracked-files=all'], { cwd: root, encoding: 'utf8' }).trim().length > 0;
+  return { gitCommit, gitDirty };
+}
+
+function browserVersion() {
+  try { return execFileSync(chrome, ['--version'], { encoding: 'utf8' }).trim(); }
+  catch { return 'unknown'; }
+}
+
+const reportPath = parseReportPath(process.argv.slice(2));
+const evidence = gitEvidence();
 const source=(await build({entryPoints:[join(root,'tests/video-browser-probe.ts')],bundle:true,write:false,format:'iife',logLevel:'silent'})).outputFiles[0].contents;
 const routes=new Map([['/', ['text/html','<!doctype html><title>Cutscene test</title><script defer src="/probe.js"></script><body></body>']],['/probe.js',['text/javascript',source]]]);
 for(const [ext,type] of [['webm','video/webm'],['mp4','video/mp4']]) routes.set('/movies/sync.'+ext,[type,await readFile(join(root,'tests/fixtures/cg/www/movies/sync.'+ext))]);
@@ -32,7 +57,21 @@ try {
   await send('Target.activateTarget',{targetId});await send('Page.bringToFront',{},sessionId);await send('Page.enable',{},sessionId);const url=`http://127.0.0.1:${server.address().port}/`;await send('Page.navigate',{url},sessionId);
   let loaded=false;for(let i=0;i<60;i++){const r=await send('Runtime.evaluate',{expression:'typeof runCgProbe === "function"'},sessionId);if(r.result?.value===true){loaded=true;break;}await new Promise(r=>setTimeout(r,100));}if(!loaded)throw new Error('Movie probe did not load');
   const r=await send('Runtime.evaluate',{expression:'runCgProbe()',awaitPromise:true,returnByValue:true,userGesture:true},sessionId);
-  if(r.exceptionDetails)throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);console.log(JSON.stringify(r.result.value,null,2));
+  if(r.exceptionDetails)throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
+  const results = r.result.value;
+  const report = {
+    schema: 1,
+    status: 'pass',
+    tool: 'test:movie:browser',
+    scope: 'desktop-browser-media',
+    gitCommit: evidence.gitCommit,
+    gitDirty: evidence.gitDirty,
+    environment: { mode: 'desktop-browser', browser: browserVersion(), switch: 'not-available', hardware: 'not-verified' },
+    fixtures: ['tests/fixtures/cg/www/movies/sync.mp4', 'tests/fixtures/cg/www/movies/sync.webm'],
+    results,
+  };
+  if (reportPath) await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  console.log(JSON.stringify(results,null,2));
 } finally {
   if(chromeProc && chromeProc.exitCode===null && chromeProc.signalCode===null){const closed=once(chromeProc,'exit').catch(()=>{});chromeProc.kill('SIGTERM');const kill=setTimeout(()=>chromeProc.kill('SIGKILL'),3000);await closed;clearTimeout(kill);}
   server.closeAllConnections();await new Promise(r=>server.close(r));await rm(profile,{recursive:true,force:true,maxRetries:3});

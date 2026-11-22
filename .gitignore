@@ -8,6 +8,7 @@ romfs/main.js.map
 release-manifest.json
 reproducibility.json
 neutral-smoke.json
+browser-validation.json
 .DS_Store
 Game/
 games/

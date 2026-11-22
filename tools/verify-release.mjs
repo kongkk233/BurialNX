@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { generateManifest, inspectNro } from './release-manifest.mjs';
+import { validateBrowserReport } from './browser-report.mjs';
 
 const project = resolve('.');
 const manifestPath = resolve(project, 'release-manifest.json');
@@ -17,6 +18,9 @@ if (stored.toolchain?.lockfileSha256 !== actual.toolchain.lockfileSha256) throw 
 if (JSON.stringify(stored.runtimeProvenance) !== JSON.stringify(actual.runtimeProvenance)) throw new Error('release manifest runtime provenance is stale');
 if (actual.runtimeProvenance.status !== 'pass' || actual.runtimeProvenance.verified.some((claim) => claim.status !== 'pass')) throw new Error('runtime provenance gate did not pass');
 if (actual.runtimeProvenance.unverified.some((claim) => claim.status !== 'not-verified')) throw new Error('runtime provenance boundary is not explicit');
+if (JSON.stringify(stored.browserValidation) !== JSON.stringify(actual.browserValidation)) throw new Error('release manifest browser validation is stale');
+validateBrowserReport(actual.browserValidation, { expectedCommit: actual.gitCommit, requirePass: true });
+if (stored.validation?.browser !== 'desktop-browser: pass' || actual.validation?.browser !== 'desktop-browser: pass') throw new Error('desktop browser validation gate did not pass');
 if (stored.artifacts?.nro?.kind !== 'release') throw new Error('release manifest does not describe a release NRO');
 if (stored.artifacts?.nro?.sha256 !== actual.artifacts.nro.sha256) throw new Error('release manifest NRO hash is stale');
 if (stored.artifacts?.runtimeExecutable?.sha256 !== actual.artifacts.runtimeExecutable.sha256) throw new Error('release manifest executable hash is stale');

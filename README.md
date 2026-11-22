@@ -94,7 +94,7 @@ Options are fully translated — Always Dash, BGM/SFX Volume, On/Off — using t
 
 `npm run verify:runtime-provenance` recomputes the tracked patch and preroll-runtime blob hashes recorded in `runtime/manifest.json`. Its explicit `not-verified` entries cover external nx.js source, SDK/toolchain, signing, and standalone-artifact claims that are recorded but not reconstructed by this host-only repository. The `port:check` report distinguishes enforced contracts, validated-only declarations, metadata-only fields, and behavior not observed by host checks.
 
-The desktop `test:movie:browser` probe is a required separate CI job: it uses Chromium to sample decoded pixels and PCM from synthetic MP4/WebM fixtures. This does not imply native Switch or hardware playback.
+The desktop `test:movie:browser` probe is required by `verify:release` and also runs as a separate CI job. With `--report browser-validation.json`, it records Chromium version, decoded pixels/PCM results, and the clean checkout commit in the ignored release evidence. This covers synthetic desktop MP4/WebM only; it does not imply native Switch, hardware, or commercial-game playback.
 
 ## 🧰 Port Kit commands
 

@@ -4,6 +4,7 @@ import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { acceptHost } from '../tools/accept-host.mjs';
 import { verifyRuntimeProvenance } from '../tools/verify-runtime-provenance.mjs';
+import { validateBrowserReport } from '../tools/browser-report.mjs';
 import { acceptPackage } from '../tools/accept-package.mjs';
 import { validateProfileFile } from '../tools/validate-profile.mjs';
 import { checkPort, safeRelative } from '../tools/check-port.mjs';
@@ -85,6 +86,33 @@ test('runtime provenance rejects a tampered claim without changing the repositor
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
+});
+
+test('browser report validation binds desktop media evidence to a clean commit', () => {
+  const result = file => ({
+    file,
+    callbacks: { ready: 1, ends: 1 },
+    sampledFrames: 240,
+    distinctFrames: 70,
+    peakPcmRms: 0.14,
+    flashCount: 4,
+    toneCount: 4,
+    pulseOffsetsMs: [12, 20, 39],
+  });
+  const report = {
+    schema: 1,
+    status: 'pass',
+    tool: 'test:movie:browser',
+    scope: 'desktop-browser-media',
+    gitCommit: 'a'.repeat(40),
+    gitDirty: false,
+    environment: { mode: 'desktop-browser', browser: 'Chromium test', switch: 'not-available', hardware: 'not-verified' },
+    fixtures: ['tests/fixtures/cg/www/movies/sync.mp4', 'tests/fixtures/cg/www/movies/sync.webm'],
+    results: [result('sync.mp4'), result('sync.webm')],
+  };
+  assert.equal(validateBrowserReport(report, { expectedCommit: 'a'.repeat(40), requirePass: true }), report);
+  assert.throws(() => validateBrowserReport({ ...report, gitCommit: 'b'.repeat(40) }, { expectedCommit: 'a'.repeat(40), requirePass: true }), /gitCommit/);
+  assert.throws(() => validateBrowserReport({ ...report, results: [result('sync.mp4'), { ...result('sync.webm'), pulseOffsetsMs: [200, 0, 0] }] }, { requirePass: true }), /pulse offset/);
 });
 
 test('host acceptance executes media, save, and rollback behavior', async () => {
