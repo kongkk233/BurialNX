@@ -99,7 +99,10 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   const packageJson = JSON.parse(await readFile(resolve(project, 'package.json'), 'utf8'));
   const runtimeManifest = JSON.parse(await readFile(resolve(project, 'runtime/manifest.json'), 'utf8'));
   const nacp = nacpSummary(buffer, layout);
-  const hostAcceptance = await acceptHost({ gameRoot: resolve(project, 'tests/fixtures/neutral-mv/www') });
+  const neutralFixture = resolve(project, 'tests/fixtures/neutral-mv/www');
+  const modFixture = resolve(project, 'tests/fixtures/neutral-mv/mod');
+  const hostAcceptance = await acceptHost({ gameRoot: neutralFixture });
+  const overlayAcceptance = await acceptHost({ gameRoot: neutralFixture, modRoot: modFixture });
   const neutralSmoke = await neutralSmokeReport(project);
   const reproducibility = await reproducibilityReport(project);
   const lockfile = await readFile(resolve(project, 'package-lock.json'));
@@ -126,7 +129,15 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       environment: hostAcceptance.environment,
       checks: hostAcceptance.checks,
       evidence: hostAcceptance.evidence,
-      fixture: relative(project, resolve(project, 'tests/fixtures/neutral-mv/www')),
+      fixture: relative(project, neutralFixture),
+    },
+    overlayAcceptance: {
+      status: overlayAcceptance.status,
+      environment: overlayAcceptance.environment,
+      checks: overlayAcceptance.checks,
+      evidence: overlayAcceptance.evidence,
+      fixture: relative(project, neutralFixture),
+      modFixture: relative(project, modFixture),
     },
     neutralSmoke,
     reproducibility,
@@ -136,6 +147,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       profile: hostAcceptance.checks.profile,
       portCheck: hostAcceptance.checks.entry === 'pass' && hostAcceptance.checks.scriptGraph === 'pass' ? 'pass' : 'fail',
       acceptHost: hostAcceptance.status,
+      overlayAcceptance: overlayAcceptance.status,
       reproducibility: reproducibility.status,
       npmTest: 'run by verify:release',
       typecheck: 'run by verify:release',

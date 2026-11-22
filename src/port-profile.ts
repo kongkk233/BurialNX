@@ -45,6 +45,7 @@ export interface LoadedPortProfile {
 }
 
 export type ProfileRead = (path: string) => ArrayBuffer | Uint8Array | null | Promise<ArrayBuffer | Uint8Array | null>;
+export type ProfileReadSync = (path: string) => ArrayBuffer | Uint8Array | null;
 
 const DEFAULT_MEDIA = { extensionFallback: ['webm', 'mp4'], variantFallback: ['-l'] };
 export const defaultPortProfile: PortProfile = {
@@ -179,6 +180,17 @@ export async function loadPortProfileFromRoots(roots: readonly string[], read: P
     const clean = root.replace(/\/+$/, '');
     if (!clean) continue;
     const raw = await read(`${clean}/${PORT_PROFILE_FILENAME}`);
+    if (raw !== null) return { profile: parsePortProfileBytes(raw), source: PORT_PROFILE_FILENAME };
+  }
+  return { profile: defaultPortProfile, source: 'default' };
+}
+
+/** Synchronous counterpart for pre-launch save discovery before the async loader starts. */
+export function loadPortProfileFromRootsSync(roots: readonly string[], read: ProfileReadSync): LoadedPortProfile {
+  for (const root of roots) {
+    const clean = root.replace(/\/+$/, '');
+    if (!clean) continue;
+    const raw = read(`${clean}/${PORT_PROFILE_FILENAME}`);
     if (raw !== null) return { profile: parsePortProfileBytes(raw), source: PORT_PROFILE_FILENAME };
   }
   return { profile: defaultPortProfile, source: 'default' };

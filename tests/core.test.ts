@@ -19,7 +19,7 @@ import { gameSaveFolders, parseSelection, startupSelection } from '../src/settin
 import { prepareGameScript, translate, installGameCompatibility, parseLanguagePack, loadLanguagePack, scanLanguageFiles, withLanguageImages, registerLanguageFont, resolveLanguageName, wrapSystemTerms, type LanguagePack, type LanguageEntry } from '../src/game-compat';
 import { createBrowserHost, resourceFetch } from '../src/browser-host';
 import { RepeatedPattern } from '../src/repeated-pattern';
-import { ensureGameSaveFolder, hasSteamSaveData, importSteamSaves, installSdSaves, safeGameSaveFolder, safeSaveFolder, steamSaveSources } from '../src/saves';
+import { ensureGameSaveFolder, hasSteamSaveData, importSteamSaves, installSdSaves, normalizeSaveFilePolicy, safeGameSaveFolder, safeSaveFolder, steamSaveSources } from '../src/saves';
 import { MESSAGE_RENDER_MODES, messageRenderLabel, cycleMessageRender, type MessageRenderMode } from '../src/partial-render';
 import { S } from '../src/state';
 import { beginGameSession, endGameSession } from '../src/game-session';
@@ -482,6 +482,56 @@ test('game-folder saves create only the chosen directory and preserve existing s
         runtime.StorageManager.save(1, 'updated by game');
         assert.equal(fs.files.get(`${folder}/file1.rpgsave`), 'updated by game');
         assert.throws(() => importSteamSaves(runtime, fs, root, { kind: 'game', folder }), /no import is needed/);
+});
+
+test('profile save extension drives storage, discovery, recovery, and Steam import', () => {
+        const policy = { directory: 'save', extension: '.bnxsave' };
+        assert.deepEqual(normalizeSaveFilePolicy(policy), policy);
+        assert.throws(() => normalizeSaveFilePolicy({ extension: '../rpgsave' }), /Invalid save profile extension/);
+        assert.throws(() => normalizeSaveFilePolicy({ directory: '../save' }), /Invalid save profile directory/);
+
+        const fs = new MemorySaveFiles();
+        const runtime: any = {
+                StorageManager: {},
+                LZString: { compressToBase64: (s: string) => s, decompressFromBase64: (s: string) => s },
+                DataManager: { maxSavefiles: () => 2 },
+        };
+        runtime.DataManager.saveGameWithoutRescue = (id: number) => { runtime.StorageManager.save(id, 'updated'); return true; };
+        installSdSaves(runtime, fs, 'sdmc:/saves', policy);
+        runtime.StorageManager.save(-1, 'config');
+        runtime.StorageManager.save(0, 'global');
+        runtime.StorageManager.save(1, 'slot');
+        assert.equal(fs.files.get('sdmc:/saves/config.bnxsave'), 'config');
+        assert.equal(fs.files.get('sdmc:/saves/global.bnxsave'), 'global');
+        assert.equal(fs.files.get('sdmc:/saves/file1.bnxsave'), 'slot');
+        assert.equal(runtime.StorageManager.load(1), 'slot');
+        runtime.StorageManager.remove(1);
+        assert.equal(fs.files.has('sdmc:/saves/file1.bnxsave'), false);
+        fs.files.set('sdmc:/saves/file1.bnxsave', 'old');
+        assert.equal(runtime.DataManager.saveGame(1), true);
+        assert.equal(fs.files.get('sdmc:/saves/file1.bnxsave.burialnx-backup'), 'old');
+        runtime.StorageManager.cleanBackup(1);
+        fs.failPath = 'sdmc:/saves/file1.bnxsave';
+        const mute = console.error; console.error = () => {};
+        try { assert.equal(runtime.DataManager.saveGame(1), false); } finally { console.error = mute; }
+        assert.equal(fs.files.get('sdmc:/saves/file1.bnxsave.burialnx-journal'), 'updated');
+        assert.equal(fs.files.get('sdmc:/saves/file1.bnxsave.burialnx-backup'), 'updated');
+        assert.throws(() => installSdSaves(runtime, fs, 'sdmc:/saves', policy), /Interrupted save/);
+
+        fs.files.set('sdmc:/game/save/global.bnxsave', JSON.stringify([null, { title: 'game' }]));
+        fs.files.set('sdmc:/game/save/file1.bnxsave', JSON.stringify({ system: {}, map: {}, player: {}, party: {} }));
+        const withDir = Object.assign(fs, { readDirSync: (path: string) => [...fs.files.keys()].filter((name) => name.startsWith(`${path.replace(/\/+$/, '')}/`)).map((name) => name.slice(path.replace(/\/+$/, '').length + 1)) });
+        assert.deepEqual(steamSaveSources(withDir, 'sdmc:/game/www', policy), ['sdmc:/game/save']);
+        assert.equal(hasSteamSaveData(withDir, 'sdmc:/game/www', policy), true);
+        const importRuntime: any = {
+                StorageManager: { webStorageKey: (id: number) => id ? `RPG File${id}` : 'RPG Global' },
+                DataManager: { maxSavefiles: () => 2 },
+                LZString: { decompressFromBase64: (s: string) => s },
+                localStorage: { getItem: () => null, setItem() {} },
+        };
+        assert.equal(importSteamSaves(importRuntime, withDir, 'sdmc:/game/www', { kind: 'sd', folder: 'sdmc:/imported' }, policy), 1);
+        assert.equal(fs.files.get('sdmc:/imported/global.bnxsave'), JSON.stringify([null, { title: 'game' }]));
+        assert.equal(fs.files.get('sdmc:/imported/file1.bnxsave'), JSON.stringify({ system: {}, map: {}, player: {}, party: {} }));
 });
 
 test('SD saves preserve old data and leave recoverable journals after failure', () => {

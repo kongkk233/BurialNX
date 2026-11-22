@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { defaultPortProfile, loadPortProfile, loadPortProfileFromRoots, mediaPolicyFromProfile, parsePortProfile } from '../src/port-profile';
+import { defaultPortProfile, loadPortProfile, loadPortProfileFromRoots, loadPortProfileFromRootsSync, mediaPolicyFromProfile, parsePortProfile } from '../src/port-profile';
 import { PatchRegistry } from '../src/patch-registry';
 import { atomicWrite, atomicWriteSync, atomicWriteSyncIfSupported } from '../src/atomic-persistence';
 import { beginGameSession, currentGamePatches, endGameSession, patchSessionMethod, snapshotSessionObject } from '../src/game-session';
@@ -81,6 +81,8 @@ test('profile control files use mod-first overlay precedence without asset probi
   });
   assert.equal(loaded.profile.id, 'mod-profile');
   assert.deepEqual(reads, ['sdmc:/mod/burialnx.port.json']);
+  const syncLoaded = loadPortProfileFromRootsSync(['sdmc:/mod/', 'sdmc:/game/'], (path) => files.get(path) ?? null);
+  assert.equal(syncLoaded.profile.id, 'mod-profile');
 });
 
 test('profile-selected entry HTML is read as a normal safe asset path', async () => {

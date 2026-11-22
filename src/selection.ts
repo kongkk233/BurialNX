@@ -1,6 +1,7 @@
 import { S } from './state';
 import { log } from './log';
 import { safeGameSaveFolder, safeSaveFolder, hasSteamSaveData } from './saves';
+import { defaultPortProfile, loadPortProfileFromRootsSync } from './port-profile';
 import { libraryIdFromRoot, loadLibrary, upsertGame, toSelection, entryFromSelection, type LibraryEntry, type LibraryAccess, type ExperimentalSettings } from './game-library';
 import { parseSelection, startupSelection, type GameSelection, type SaveLocation } from './settings';
 import { invalidateCoverCache } from './cover-cache';
@@ -10,6 +11,13 @@ import { atomicWriteSyncIfSupported } from './atomic-persistence';
 import { launch } from './game-launch';
 
 const settingsPath = 'sdmc:/switch/burialnx/settings.json';
+
+/** Read the selected package's save naming policy before the async launch pipeline. */
+export function currentSavePolicy() {
+        if (!S.selectedGame) return defaultPortProfile.save;
+        const roots = [S.selectedMod, S.selectedGame].filter((value): value is string => !!value);
+        return loadPortProfileFromRootsSync(roots, (path) => (Switch as any).readFileSync(path)).profile.save;
+}
 
 export function validSaveLocation(location: SaveLocation, root: string, mod: string | null): boolean {
         if (location.kind === 'switch') return true;
@@ -140,7 +148,7 @@ export function chooseSaves(location: SaveLocation) {
                 S.saveLocation = location;
                 if (location.kind === 'game') { S.importRequested = false; S.waitForRelease = true; void launch(); return; }
                 let hasSource = true;
-                try { hasSource = hasSteamSaveData(Switch as any, S.selectedGame); }
+                try { hasSource = hasSteamSaveData(Switch as any, S.selectedGame, currentSavePolicy()); }
                 catch (error) { log(`Could not check Steam saves: ${String(error)}`); }
                 if (hasSource) S.phase = 'import-confirm';
                 else { S.importRequested = false; void launch(); }

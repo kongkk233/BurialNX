@@ -15,14 +15,15 @@ BurialNX Port Kit targets legally obtained RPG Maker MV/NW.js game packages. A p
    npm run profile:validate -- /path/to/www/burialnx.port.json
    npm run port:check -- --game-root /path/to/www
    npm run accept:host
+   npm run accept:overlay
    ```
 
-   `port:check` reads the mod profile before the game profile, verifies the entry HTML and ordered local script graph, and rejects external or traversal paths. Add `--mod-root /path/to/mod` to check an overlay; add `--manifest ./port-manifest.json` only when you explicitly want a generated audit file.
+   `port:check` reads the mod profile before the game profile, verifies the entry HTML and ordered local script graph, and rejects external or traversal paths. Add `--mod-root /path/to/mod` to check an overlay; `accept:overlay` runs the repository's neutral game+mod fixture through the same host media, asset, save, lifecycle, and rollback checks. Add `--manifest ./port-manifest.json` only when you explicitly want a generated audit file.
 4. Set the entry HTML, runtime compatibility metadata, save contract, and media policy. Keep paths relative and use forward slashes. If `entry.script` is declared, it must already occur in the HTML script graph; the checker does not inject it.
 5. Run `npm test`, `npm run typecheck`, and `npm run verify:release`.
 6. Test the resulting NRO with neutral media fixtures before testing the permitted target package. Host acceptance does not replace native or physical Switch validation.
 
-The profile API is intentionally additive in phase one. Existing launch behavior remains the default when no profile is supplied. In v1, `entry.html`, `assets`, and `media` drive launch behavior; `entry.script`, `runtime`, `compat`, `save`, and `package` are validated metadata and are not silently treated as runtime overrides. The selected mod profile wins over the base game profile, and the control file is read directly rather than through hashed asset lookup or envelope decoding.
+The profile API is intentionally additive in phase one. Existing launch behavior remains the default when no profile is supplied. In v1, `entry.html`, `assets`, `media`, and `save.extension` drive launch behavior; `entry.script` remains a validation contract, while `save.directory` is a package-relative diagnostic contract because the actual writable destination is always selected and safety-checked by the operator. `runtime`, `compat`, and `package` remain validated metadata and are not silently treated as runtime overrides. The selected mod profile wins over the base game profile, and the control file is read directly rather than through hashed asset lookup or envelope decoding.
 
 ## Assets and media
 

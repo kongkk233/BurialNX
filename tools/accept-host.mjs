@@ -48,19 +48,27 @@ export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
     vm.runInNewContext(source, sandbox, { filename: `${file.root}/${file.path}` });
   }
   assert(Array.isArray(sandbox.__neutralMvFixture?.scripts), 'neutral fixture scripts did not run');
-  assert(sandbox.__neutralMvFixture.scripts.join(',') === 'rpg_core,main', 'script order was not preserved');
+  const expectedScripts = modRoot ? 'rpg_core,mod,main' : 'rpg_core,main';
+  assert(sandbox.__neutralMvFixture.scripts.join(',') === expectedScripts, 'script order or overlay precedence was not preserved');
+  if (modRoot) assert(sandbox.__neutralMvFixture.mod === true, 'mod script did not execute');
   assert(typeof sandbox.onload === 'function', 'neutral fixture did not expose onload');
   sandbox.onload();
   assert(sandbox.__neutralMvFixture.booted === true, 'neutral fixture onload did not boot');
 
   const reads = [];
+  const overlayReads = [];
   const diskReader = {
     async read(path) {
-      assert(path.startsWith('game/'), `asset reader escaped game root: ${path}`);
-      const relative = path.slice('game/'.length);
+      const match = /^(mod|game)\/(.*)$/.exec(path);
+      assert(match, `asset reader escaped overlay roots: ${path}`);
+      const label = match[1];
+      const relative = match[2];
+      const root = label === 'mod' ? modRoot : gameRoot;
+      assert(root, `asset reader requested unavailable ${label} root: ${path}`);
       reads.push(relative);
+      overlayReads.push(`${label}/${relative}`);
       try {
-        const bytes = await readFile(resolve(gameRoot, relative));
+        const bytes = await readFile(resolve(root, relative));
         return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       } catch (error) {
         if (error?.code === 'ENOENT') return null;
@@ -68,7 +76,9 @@ export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
       }
     },
   };
-  const assets = assetsApi.gameAssets('game', null, diskReader, 1024 * 1024, { hashedLookup: false });
+  const assets = assetsApi.gameAssets('game', modRoot ? 'mod' : null, diskReader, 1024 * 1024, { hashedLookup: false });
+  const overlayAsset = await assets.read('img/README.txt');
+  if (modRoot) assert(new TextDecoder().decode(overlayAsset) === 'mod-overlay-asset\n', 'mod asset did not override the game asset');
   const resolver = mediaApi.createMovieResolver(assets, [], undefined, true, {
     extensionFallback: port.contracts.media.extensionFallback,
     variantFallback: port.contracts.media.variantFallback,
@@ -81,9 +91,11 @@ export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
   assert(variantSource.url.startsWith('blob:'), 'variant fallback did not create an owned Blob URL');
   variantSource.release();
   await assertRejects(resolver('movies/corrupt.mp4', false, 'video/mp4'), /ISO MP4 container/);
-  assert(reads.includes('movies/fallback.webm') && reads.includes('movies/variant-l.webm'), 'media fallback candidates were not read');
+  const expectedVariant = modRoot ? 'movies/variant-mod.webm' : 'movies/variant-l.webm';
+  assert(reads.includes('movies/fallback.webm') && reads.includes(expectedVariant), 'media fallback candidates were not read with overlay precedence');
 
-  const saveFiles = new Map([['game/save', { mode: 0o040000 }]]);
+  const saveFolder = `game/${port.contracts.save.directory}`;
+  const saveFiles = new Map([[saveFolder, { mode: 0o040000 }]]);
   const saveFs = {
     readFileSync(path) {
       const value = saveFiles.get(path);
@@ -105,7 +117,7 @@ export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
     LZString: { compressToBase64: (value) => value, decompressFromBase64: (value) => value },
     DataManager: { maxSavefiles: () => 3 },
   };
-  savesApi.installSdSaves(saveRuntime, saveFs, `game/${port.contracts.save.directory}`);
+  savesApi.installSdSaves(saveRuntime, saveFs, saveFolder, port.contracts.save);
   saveRuntime.StorageManager.save(1, 'neutral-save-round-trip');
   assert(saveRuntime.StorageManager.exists(1), 'save backend did not index the written slot');
   assert(saveRuntime.StorageManager.load(1) === 'neutral-save-round-trip', 'save backend did not round-trip data');
@@ -180,16 +192,22 @@ export async function acceptHost({ gameRoot = fixture, modRoot = null } = {}) {
       profileId: port.profile.id,
       entry: port.entry.path,
       scripts: port.scriptGraph.paths,
+      overlay: modRoot ? {
+        profile: 'mod-first',
+        asset: 'mod/img/README.txt overrides game/img/README.txt',
+        media: `mod/${expectedVariant} overrides game/movies/variant-l.webm`,
+        reads: overlayReads,
+      } : null,
       bootMarker: sandbox.__neutralMvFixture,
       media: {
         policy: port.contracts.media,
         extensionFallback: 'movies/fallback.mp4 -> movies/fallback.webm',
-        variantFallback: 'movies/variant.mp4 -> movies/variant-l.webm',
+        variantFallback: `movies/variant.mp4 -> ${expectedVariant}`,
         corruptCandidate: 'movies/corrupt.mp4 rejected as an invalid MP4 container',
       },
       save: {
         contract: port.contracts.save,
-        roundTrip: 'game/save/file1.rpgsave write/read/remove passed',
+        roundTrip: `game/${port.contracts.save.directory}/file1${port.contracts.save.extension} write/read/remove passed`,
       },
       lifecycle: 'runtime-plan launch -> media/save use -> session teardown -> relaunch passed; frames=2',
       rollback: 'prototype/method restored and temporary global removed',
@@ -201,9 +219,22 @@ function cliPath() {
   return process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '';
 }
 
+function parseArgs(argv) {
+  const options = {};
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--game-root') options.gameRoot = argv[++i];
+    else if (argv[i] === '--mod-root') options.modRoot = argv[++i];
+    else if (argv[i] === '--help' || argv[i] === '-h') options.help = true;
+    else throw new Error(`Unknown option: ${argv[i]}`);
+  }
+  return options;
+}
+
 if (import.meta.url === cliPath()) {
   try {
-    console.log(JSON.stringify(await acceptHost(), null, 2));
+    const options = parseArgs(process.argv.slice(2));
+    if (options.help) console.log('Usage: node tools/accept-host.mjs [--game-root <www>] [--mod-root <mod>]');
+    else console.log(JSON.stringify(await acceptHost(options), null, 2));
   } catch (error) {
     console.error(`host acceptance failed: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;

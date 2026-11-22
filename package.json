@@ -12,6 +12,7 @@
     "profile:validate": "node tools/validate-profile.mjs",
     "port:check": "node tools/check-port.mjs",
     "accept:host": "node tools/accept-host.mjs",
+    "accept:overlay": "node tools/accept-host.mjs --game-root tests/fixtures/neutral-mv/www --mod-root tests/fixtures/neutral-mv/mod",
     "build:repro": "node tools/reproducible-build.mjs",
     "verify:release": "npm run profile:validate -- profiles/examples/minimal-mv.json && npm run port:check -- --game-root tests/fixtures/neutral-mv/www && npm run accept:host && npm run smoke:neutral && npm test && npm run typecheck && node tools/assert-clean.mjs && npm run build:repro && node tools/release-manifest.mjs && node tools/verify-release.mjs",
     "test:movie:browser": "node tools/test-video-browser.mjs",

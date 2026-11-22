@@ -31,6 +31,8 @@ jobs:
         run: npm run port:check -- --game-root tests/fixtures/neutral-mv/www
       - name: Run neutral host acceptance
         run: npm run accept:host
+      - name: Run mod overlay host acceptance
+        run: npm run accept:overlay
       - name: Run neutral contract smoke
         run: npm run smoke:neutral
       - name: Run host tests

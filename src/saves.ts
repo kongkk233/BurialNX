@@ -9,10 +9,38 @@ export interface SaveFiles {
         readDirSync?(path: string): string[] | null;
 }
 
-const name = (id: number) => {
+/** Package-level save naming contract. The writable folder remains user-selected. */
+export interface SaveFilePolicy {
+        directory: string;
+        extension: string;
+}
+
+export const DEFAULT_SAVE_FILE_POLICY: SaveFilePolicy = { directory: 'save', extension: '.rpgsave' };
+
+function safeRelativeDirectory(value: string): boolean {
+        return !!value && !value.startsWith('/') && !value.includes('\\') && !value.includes(':') &&
+                !value.split('/').some((part) => !part || part === '.' || part === '..' || /[\u0000-\u001f\u007f\u2028\u2029]/.test(part));
+}
+
+function safeExtension(value: string): boolean {
+        return /^\.[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value);
+}
+
+/** Normalize untrusted profile input before it reaches filesystem naming. */
+export function normalizeSaveFilePolicy(policy?: Partial<SaveFilePolicy>): SaveFilePolicy {
+        const directory = policy?.directory ?? DEFAULT_SAVE_FILE_POLICY.directory;
+        const extension = policy?.extension ?? DEFAULT_SAVE_FILE_POLICY.extension;
+        if (!safeRelativeDirectory(directory)) throw new Error('Invalid save profile directory');
+        if (!safeExtension(extension)) throw new Error('Invalid save profile extension');
+        return { directory, extension };
+}
+
+const name = (id: number, extension: string) => {
         if (!Number.isInteger(id) || id < -1 || id > 999) throw new Error('Invalid save slot');
-        return id === -1 ? 'config.rpgsave' : id === 0 ? 'global.rpgsave' : `file${id}.rpgsave`;
+        return id === -1 ? `config${extension}` : id === 0 ? `global${extension}` : `file${id}${extension}`;
 };
+
+const regexEscape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const text = (bytes: ArrayBuffer | null) => bytes === null ? null : new TextDecoder().decode(bytes);
 
 /** Never put the writable save folder inside the game or mod directories. */
@@ -47,10 +75,11 @@ export function ensureGameSaveFolder(fs: Pick<SaveFiles, 'statSync'> & { mkdirSy
 }
 
 /** MV uses the same LZString base64 format on disk and in localStorage. */
-export function installSdSaves(runtime: any, fs: SaveFiles, folder: string): void {
+export function installSdSaves(runtime: any, fs: SaveFiles, folder: string, policy?: Partial<SaveFilePolicy>): void {
         const manager = runtime.StorageManager, codec = runtime.LZString;
         if (!manager || !codec) throw new Error('Save storage is unavailable');
-        const path = (id: number) => `${folder}/${name(id)}`;
+        const savePolicy = normalizeSaveFilePolicy(policy);
+        const path = (id: number) => `${folder}/${name(id, savePolicy.extension)}`;
         const read = (p: string) => text(fs.readFileSync(p));
         const exists = (p: string) => fs.statSync(p) !== null;
         const remove = (p: string) => {
@@ -68,10 +97,11 @@ export function installSdSaves(runtime: any, fs: SaveFiles, folder: string): voi
         };
 
         const existsCache = new Map<number, boolean>();
+        const suffix = regexEscape(savePolicy.extension);
         const scanEntrySlot = (entry: string): number | null => {
-                if (/^config\.rpgsave$/i.test(entry)) return -1;
-                if (/^global\.rpgsave$/i.test(entry)) return 0;
-                const m = /^file([1-9]\d{0,2})\.rpgsave$/i.exec(entry);
+                if (new RegExp(`^config${suffix}$`, 'i').test(entry)) return -1;
+                if (new RegExp(`^global${suffix}$`, 'i').test(entry)) return 0;
+                const m = new RegExp(`^file([1-9]\\d{0,2})${suffix}$`, 'i').exec(entry);
                 return m ? Number(m[1]) : null;
         };
         const refreshExistsCache = (): void => {
@@ -158,27 +188,31 @@ export function installSdSaves(runtime: any, fs: SaveFiles, folder: string): voi
 }
 
 /** Locate possible Steam save indexes without changing the source folders. */
-export function steamSaveSources(fs: Pick<SaveFiles, 'statSync'>, root: string): string[] {
-        return gameSaveFolders(root).filter((dir) => fs.statSync(`${dir}/global.rpgsave`) !== null);
+export function steamSaveSources(fs: Pick<SaveFiles, 'statSync'>, root: string, policy?: Partial<SaveFilePolicy>): string[] {
+        const savePolicy = normalizeSaveFilePolicy(policy);
+        return gameSaveFolders(root).filter((dir) => fs.statSync(`${dir}/global${savePolicy.extension}`) !== null);
 }
 
 /** A save index alone is not a saved game; don't prompt when no slots exist. */
-export function hasSteamSaveData(fs: Pick<SaveFiles, 'statSync'> & { readDirSync(path: string): string[] | null }, root: string): boolean {
-        return steamSaveSources(fs, root).some((dir) => {
+export function hasSteamSaveData(fs: Pick<SaveFiles, 'statSync'> & { readDirSync(path: string): string[] | null }, root: string, policy?: Partial<SaveFilePolicy>): boolean {
+        const savePolicy = normalizeSaveFilePolicy(policy);
+        const suffix = regexEscape(savePolicy.extension);
+        return steamSaveSources(fs, root, savePolicy).some((dir) => {
                 const entries = fs.readDirSync(dir);
-                return !entries || entries.some((entry) => /^file[1-9]\d{0,2}\.rpgsave$/i.test(entry));
+                return !entries || entries.some((entry) => new RegExp(`^file[1-9]\\d{0,2}${suffix}$`, 'i').test(entry));
         });
 }
 
 /** Copy only into an entirely empty destination; source files are never written. */
-export function importSteamSaves(runtime: any, fs: SaveFiles, root: string, location: SaveLocation): number {
+export function importSteamSaves(runtime: any, fs: SaveFiles, root: string, location: SaveLocation, policy?: Partial<SaveFilePolicy>): number {
+        const savePolicy = normalizeSaveFilePolicy(policy);
         if (location.kind === 'game') throw new Error('Game-folder saves are already in use; no import is needed');
         if (location.kind === 'sd' && !safeSaveFolder(location.folder, root, null)) throw new Error('Save folder overlaps game folder');
-        const candidates = steamSaveSources(fs, root);
-        if (candidates.length !== 1) throw new Error(candidates.length ? 'Steam saves found in two folders; keep only one source' : 'No Steam global.rpgsave found in the game save folder');
+        const candidates = steamSaveSources(fs, root, savePolicy);
+        if (candidates.length !== 1) throw new Error(candidates.length ? 'Steam saves found in two folders; keep only one source' : `No Steam global${savePolicy.extension} found in the game save folder`);
         const max = runtime.DataManager.maxSavefiles();
         if (!Number.isInteger(max) || max < 1 || max > 999) throw new Error('Invalid save slot count');
-        const readSource = (id: number) => text(fs.readFileSync(`${candidates[0]}/${name(id)}`));
+        const readSource = (id: number) => text(fs.readFileSync(`${candidates[0]}/${name(id, savePolicy.extension)}`));
         const validate = (value: string, kind: string) => {
                 if (value.length > 8 * 1024 * 1024) throw new Error(`${kind} is too large`);
                 const decoded = runtime.LZString.decompressFromBase64(value);
@@ -200,7 +234,7 @@ export function importSteamSaves(runtime: any, fs: SaveFiles, root: string, loca
         }
         if (!source.length) throw new Error('No Steam save slots found');
         const rawKey = (id: number) => runtime.StorageManager.webStorageKey(id);
-        const target = (id: number) => location.kind === 'sd' ? `${location.folder}/${name(id)}` : rawKey(id);
+        const target = (id: number) => location.kind === 'sd' ? `${location.folder}/${name(id, savePolicy.extension)}` : rawKey(id);
         for (let id = 0; id <= max; id++) {
                 if (location.kind === 'switch') {
                         if (runtime.localStorage.getItem(target(id)) !== null || runtime.localStorage.getItem(target(id) + 'bak') !== null) throw new Error('Destination has existing saves or backups; import cancelled');

@@ -7,6 +7,7 @@ import { checkPort, safeRelative } from '../tools/check-port.mjs';
 import { profileApi } from '../tools/validate-profile.mjs';
 
 const fixture = resolve('tests/fixtures/neutral-mv/www');
+const modFixture = resolve('tests/fixtures/neutral-mv/mod');
 
 test('port checker validates the neutral fixture and records ordered scripts', async () => {
   const result = await checkPort({ gameRoot: fixture, modRoot: null, profile: null, manifest: null });
@@ -30,7 +31,17 @@ test('host acceptance executes media, save, and rollback behavior', async () => 
     rollback: 'pass',
   });
   assert.match(result.evidence.media.extensionFallback, /fallback\.webm/);
-  assert.match(result.evidence.save.roundTrip, /file1\.rpgsave/);
+  assert.match(result.evidence.save.roundTrip, new RegExp(`file1\\${result.evidence.save.contract.extension} `));
+});
+
+test('host acceptance proves mod-first profile, asset, media, and script overlay', async () => {
+  const result = await acceptHost({ gameRoot: fixture, modRoot: modFixture });
+  assert.equal(result.status, 'pass');
+  assert.equal(result.evidence.profileId, 'neutral-mv-mod');
+  assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/mod.js', 'js/main.js']);
+  assert.equal(result.evidence.overlay.profile, 'mod-first');
+  assert.match(result.evidence.overlay.media, /variant-mod\.webm/);
+  assert.match(result.evidence.save.roundTrip, /file1\.modsave/);
 });
 
 test('port checker path helper rejects traversal and external URLs', () => {

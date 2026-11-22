@@ -11,7 +11,7 @@ import { overrideKeymapForSaveLoadScene, isSaveLoadKeymapActive } from './save-l
 import { pollButtonBindings } from './stick-bindings';
 import { pollMouseInput, renderMouseCursor, hasMouseMovementBinding } from './mouse-input';
 import { libraryTileCount, libraryNavigateRow } from './library-nav';
-import { loadEntryIntoState, startOrChooseSaves, chooseSaves, remember, rememberLibrary, setGameLanguage, getGameLanguage, validSaveLocation, currentSelection, setExperimentalSettings, setGameFps } from './selection';
+import { loadEntryIntoState, startOrChooseSaves, chooseSaves, remember, rememberLibrary, setGameLanguage, getGameLanguage, validSaveLocation, currentSelection, currentSavePolicy, setExperimentalSettings, setGameFps } from './selection';
 import { getAllPickKeys, findNearestKey } from './keymap-layout';
 import { openKeymapEditor, applyPreset, saveEditingKeymap, handleKeymapTouch, mergedKeymap } from './keymap-editor';
 import { menuButtonIndicesFor, faceButtonLetter, setButton, setButtonWithLabel, displayToButtonIndex } from './keymap';
@@ -535,7 +535,7 @@ export function frame(now: number) {
                         else if (!S.waitForRelease && (edgeC() || edgeX())) {
                                 const wantsImport = edgeC();
                                 if (S.choiceFromMenu) {
-                                        try { S.message = wantsImport ? `Imported ${importSteamSaves(S.runtime, Switch as any, S.selectedGame!, S.saveLocation!)} Steam save slots.` : 'Import cancelled.'; }
+                                        try { S.message = wantsImport ? `Imported ${importSteamSaves(S.runtime, Switch as any, S.selectedGame!, S.saveLocation!, currentSavePolicy())} Steam save slots.` : 'Import cancelled.'; }
                                         catch (error) { S.message = `Import failed: ${String(error)}`; }
                                         S.waitForRelease = true; S.phase = 'notice';
                                 } else { S.importRequested = wantsImport; void launch(); }

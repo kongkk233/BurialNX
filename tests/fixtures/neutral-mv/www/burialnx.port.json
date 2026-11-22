@@ -6,6 +6,6 @@
   "compat": { "mv": true, "nwjs": true, "node": true },
   "assets": { "hashedLookup": false },
   "media": { "extensionFallback": ["webm", "mp4"], "variantFallback": ["-l"] },
-  "save": { "directory": "save", "extension": ".rpgsave" },
+  "save": { "directory": "save", "extension": ".bnxsave" },
   "package": { "name": "neutral-mv-fixture", "version": "1.0.0" }
 }

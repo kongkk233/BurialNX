@@ -76,7 +76,7 @@ export async function launch() {
                 });
                 const profile = profileLoad.profile;
                 const profileSource = profileLoad.source;
-                log(`Port profile: ${profileSource} (${profile.id}); runtime=${profile.runtime.kind}; media variants=${profile.media.variantFallback.join(',') || '(none)'}; hashed assets=${profile.assets.hashedLookup ? 'on' : 'off'}; envelope=${profile.assets.envelope?.algorithm || 'none'}`);
+                log(`Port profile: ${profileSource} (${profile.id}); runtime=${profile.runtime.kind}; save=${profile.save.directory}/*${profile.save.extension}; media variants=${profile.media.variantFallback.join(',') || '(none)'}; hashed assets=${profile.assets.hashedLookup ? 'on' : 'off'}; envelope=${profile.assets.envelope?.algorithm || 'none'}`);
                 const rawAssets = gameAssets(S.selectedGame, S.selectedMod || null, { async read(path) {
                         const bytes = await (Switch as any).readFile(path);
                         if (__DEBUG__ && bytes && /\/data\//i.test(path)) log(`Read game data: ${path} (${bytes.byteLength} bytes)`);
@@ -186,9 +186,9 @@ export async function launch() {
                 if (S.saveLocation.kind === 'sd' || S.saveLocation.kind === 'game') {
                         if (!validSaveLocation(S.saveLocation, S.selectedGame, S.selectedMod || null)) throw new Error('Invalid save folder');
                         if (S.saveLocation.kind === 'game') ensureGameSaveFolder(Switch as any, S.saveLocation.folder, S.selectedGame, S.selectedMod || null);
-                        installSdSaves(S.runtime, Switch as any, S.saveLocation.folder);
+                        installSdSaves(S.runtime, Switch as any, S.saveLocation.folder, profile.save);
                 }
-                if (S.importRequested) { const count = importSteamSaves(S.runtime, Switch as any, S.selectedGame, S.saveLocation); log(`Imported ${count} Steam save slots`); }
+                if (S.importRequested) { const count = importSteamSaves(S.runtime, Switch as any, S.selectedGame, S.saveLocation, profile.save); log(`Imported ${count} Steam save slots using ${profile.save.extension}`); }
                 setLoadingProgress(0.98, 'Starting game…');
                 if (S.runtime.Graphics?.render) {
                         patchSessionMethod('graphics.render', S.runtime.Graphics, 'render', (render) => function() {
