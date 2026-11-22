@@ -21,3 +21,6 @@ icon.png
 # Temp dir used by tools/test.mjs to load the forwarder.test.ts bundle
 # (needs to be inside the project so Node can resolve `esbuild`).
 .test-tmp/
+.test-external-runtime-*/
+# Temporary app directories used by the opt-in external runtime probe.
+.external-runtime-probe-*/

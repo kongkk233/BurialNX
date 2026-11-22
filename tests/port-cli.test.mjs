@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cp, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { EventEmitter } from 'node:events';
+import { createHash } from 'node:crypto';
+import { cp, chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { acceptExternalRuntime, parseArgs, versionMatches } from '../tools/accept-external-runtime.mjs';
 import { acceptHost } from '../tools/accept-host.mjs';
 import { verifyRuntimeProvenance } from '../tools/verify-runtime-provenance.mjs';
 import { validateBrowserReport } from '../tools/browser-report.mjs';
@@ -139,6 +143,145 @@ test('generic package runtime acceptance executes scripts without neutral marker
   assert.equal(result.evidence.neutralMarkerRequired, false);
   assert.equal(result.evidence.startup, 'scene-boot');
   assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);
+});
+
+test('external runtime acceptance stays not-verified without an explicit executable', async () => {
+  const before = await readFile(join(genericFixture, 'index.html'));
+  const result = await acceptExternalRuntime({ gameRoot: genericFixture });
+  assert.equal(result.status, 'not-verified');
+  assert.equal(result.scope, 'external-runtime-identity');
+  assert.equal(result.execution, 'not-run');
+  assert.equal(result.reason, 'no external runtime executable was supplied');
+  assert.equal(result.declaredRuntime.kind, 'nwjs');
+  assert.equal(result.package.gameScriptsExecuted, false);
+  assert.equal(result.package.bindingSource, 'host-port-check');
+  assert.equal(result.package.probeBinding, 'not-run');
+  assert.equal(result.switchRuntime, 'not-verified');
+  assert.equal(result.hardware, 'not-verified');
+  assert.deepEqual(await readFile(join(genericFixture, 'index.html')), before);
+});
+
+test('external runtime acceptance validates a nonce-bound external process handshake', async () => {
+  const temporary = await mkdtemp(resolve('.test-external-runtime-'));
+  try {
+    const sentinelBefore = await readFile(join(genericFixture, 'js/rpg_core.js'));
+    const runtime = join(temporary, 'synthetic-nwjs-runtime');
+    writeFileSync(runtime, '# synthetic executable\n');
+    await chmod(runtime, 0o755);
+    const runtimeSha256 = createHash('sha256').update(readFileSync(runtime)).digest('hex');
+    const result = await acceptExternalRuntime({
+      runtime,
+      gameRoot: genericFixture,
+      spawnImpl(command, args) {
+        const child = new EventEmitter();
+        const config = JSON.parse(readFileSync(join(args[0], 'burialnx-external-runtime-probe.json'), 'utf8'));
+        setImmediate(() => {
+          writeFileSync(config.resultPath, `${JSON.stringify({
+            schema: 1,
+            nonce: config.nonce,
+            probeLoaded: true,
+            observedRuntime: {
+              kind: 'nwjs',
+              version: 'fixture',
+              processVersions: { nw: 'fixture', node: 'synthetic' },
+              execPath: command,
+              executableSha256: runtimeSha256,
+              nwGlobal: true,
+            },
+            packageBindingSha256: config.packageBindingSha256,
+            gameScriptsExecuted: false,
+          })}\n`);
+          child.emit('close', 0, null);
+        });
+        return child;
+      },
+    });
+    assert.equal(result.status, 'pass');
+    assert.equal(result.execution, 'injected-process-test');
+    assert.equal(result.scope, 'external-runtime-identity');
+    assert.equal(result.observedRuntime.kind, 'nwjs');
+    assert.equal(result.observedRuntime.version, 'fixture');
+    assert.equal(result.observedRuntime.versionMatch, 'exact');
+    assert.equal(result.package.gameScriptsExecuted, false);
+    assert.equal(result.package.bindingSource, 'host-port-check');
+    assert.equal(result.package.probeBinding, 'host-provided-echo');
+    assert.equal(result.hardware, 'not-verified');
+    assert.equal(result.commercialGame, 'not-verified');
+    assert.match(result.probe.nonce, /^[0-9a-f-]{36}$/);
+    assert.deepEqual(await readFile(join(genericFixture, 'js/rpg_core.js')), sentinelBefore);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test('external runtime acceptance fails closed on nonce, kind, version, and timeout failures', async () => {
+  const temporary = await mkdtemp(resolve('.test-external-runtime-'));
+  try {
+    const runtime = join(temporary, 'synthetic-nwjs-runtime');
+    writeFileSync(runtime, '# synthetic executable\n');
+    await chmod(runtime, 0o755);
+    const runtimeSha256 = createHash('sha256').update(readFileSync(runtime)).digest('hex');
+    const runWith = async (mode, expected) => {
+      await assert.rejects(
+        acceptExternalRuntime({
+          runtime,
+          gameRoot: genericFixture,
+          timeoutMs: 100,
+          spawnImpl(command, args) {
+            const child = new EventEmitter();
+            const config = JSON.parse(readFileSync(join(args[0], 'burialnx-external-runtime-probe.json'), 'utf8'));
+            if (mode === 'timeout') return child;
+            setImmediate(() => {
+              writeFileSync(config.resultPath, `${JSON.stringify({
+                schema: 1,
+                nonce: mode === 'nonce' ? 'wrong-nonce' : config.nonce,
+                probeLoaded: true,
+                observedRuntime: {
+                  kind: mode === 'kind' ? 'browser' : 'nwjs',
+                  version: mode === 'version' ? '0.29.7' : 'fixture',
+                  processVersions: { nw: mode === 'process-version' || mode === 'version' ? '0.29.7' : 'fixture' },
+                  execPath: command,
+                  executableSha256: runtimeSha256,
+                  nwGlobal: true,
+                },
+                packageBindingSha256: config.packageBindingSha256,
+                gameScriptsExecuted: false,
+              })}\n`);
+              if (mode === 'exit-close') {
+                child.emit('exit', 0, null);
+                setTimeout(() => child.emit('close', 1, null), 0);
+              } else child.emit('close', 0, null);
+            });
+            return child;
+          },
+        }),
+        expected,
+      );
+    };
+    await runWith('nonce', /nonce mismatch/);
+    await runWith('kind', /did not identify itself as NW\.js/);
+    await runWith('process-version', /process\.versions\.nw/);
+    await runWith('version', /version mismatch/);
+    await runWith('exit-close', /exited unsuccessfully/);
+    await runWith('timeout', /timed out/);
+  } finally {
+    await rm(temporary, { recursive: true, force: true });
+  }
+});
+
+test('external runtime CLI rejects missing option values instead of downgrading them to not-verified', () => {
+  assert.throws(() => parseArgs(['--runtime']), /--runtime requires a value/);
+  assert.throws(() => parseArgs(['--timeout-ms', '--report', 'out.json']), /--timeout-ms requires a value/);
+});
+
+test('external runtime acceptance rejects unavailable executables and ambiguous versions', async () => {
+  await assert.rejects(
+    acceptExternalRuntime({ gameRoot: genericFixture, runtime: resolve('.test-external-runtime-missing') }),
+    /not accessible/,
+  );
+  assert.deepEqual(versionMatches('0.29.x', '0.29.7'), { matched: true, mode: 'explicit-pattern' });
+  assert.deepEqual(versionMatches('0.29', '0.29.7'), { matched: false, mode: 'mismatch' });
+  assert.deepEqual(versionMatches('0.29.7', '0.29.7'), { matched: true, mode: 'exact' });
 });
 
 test('generic package acceptance keeps mod-first profile precedence without executing scripts', async () => {

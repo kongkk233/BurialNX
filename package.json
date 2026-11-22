@@ -13,6 +13,7 @@
     "port:check": "node tools/check-port.mjs",
     "accept:package": "node tools/accept-package.mjs",
     "accept:package:runtime": "node tools/accept-package-runtime.mjs",
+    "accept:external-runtime": "node tools/accept-external-runtime.mjs",
     "accept:host": "node tools/accept-host.mjs",
     "accept:overlay": "node tools/accept-host.mjs --game-root tests/fixtures/neutral-mv/www --mod-root tests/fixtures/neutral-mv/mod",
     "verify:runtime-provenance": "node tools/verify-runtime-provenance.mjs",
