@@ -188,7 +188,32 @@ jobs:
         run: npm run verify:release
       - name: Print release evidence summary
         run: |
-          node -e "const m=JSON.parse(require('fs').readFileSync('release-manifest.json')); console.log(JSON.stringify({gitCommit:m.gitCommit,nativeRebuild:{status:m.nativeRebuild.status,projectCommit:m.nativeRebuild.projectCommit,expectedExecutableSha256:m.nativeRebuild.expectedExecutableSha256,rebuiltExecutableSha256:m.nativeRebuild.rebuiltExecutableSha256},validationNative:m.validation.native},null,2))"
+          node - <<'NODE'
+          const m = JSON.parse(require('fs').readFileSync('release-manifest.json'));
+          const summarize = (artifact) => artifact && ({
+            path: artifact.path,
+            kind: artifact.kind,
+            sha256: artifact.sha256,
+            bytes: artifact.bytes,
+            executableSha256: artifact.executableSha256,
+            nacp: artifact.nacp,
+          });
+          console.log(JSON.stringify({
+            schema: m.schema,
+            gitCommit: m.gitCommit,
+            artifactSet: m.artifactSet,
+            artifacts: {
+              nro: summarize(m.artifacts.nro),
+              debugNro: summarize(m.artifacts.debugNro),
+            },
+            validation: {
+              artifacts: m.validation.artifacts,
+              externalRuntime: m.validation.externalRuntime,
+              native: m.validation.native,
+              hardware: m.validation.hardware,
+            },
+          }, null, 2));
+          NODE
       - name: Upload release validation evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
