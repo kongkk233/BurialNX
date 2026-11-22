@@ -6,6 +6,24 @@ import { validateBrowserReport } from './browser-report.mjs';
 const project = resolve('.');
 const manifestPath = resolve(project, 'release-manifest.json');
 
+function verifyEntryScriptEvidence(report, label, expectedExecution) {
+  const entry = report?.evidence?.entryScript;
+  if (!entry || (typeof entry.declared !== 'string' && entry.declared !== null)) throw new Error(`${label}.evidence.entryScript.declared is invalid`);
+  const graph = entry.graph;
+  const execution = entry.execution;
+  if (!graph || !execution) throw new Error(`${label}.evidence.entryScript is incomplete`);
+  if (entry.declared === null) {
+    if (graph.status !== 'not-declared' || graph.path !== null || graph.index !== null || execution.status !== 'not-declared' || execution.observed !== false || execution.index !== null) throw new Error(`${label}.evidence.entryScript has inconsistent undeclared state`);
+    return;
+  }
+  if (graph.status !== 'pass' || graph.path !== entry.declared || !Number.isInteger(graph.index) || graph.index < 0) throw new Error(`${label}.evidence.entryScript graph evidence is invalid`);
+  if (expectedExecution === 'not-observed') {
+    if (execution.status !== 'not-observed' || execution.observed !== false || execution.index !== null) throw new Error(`${label}.evidence.entryScript must remain not-observed`);
+  } else if (execution.status !== 'observed' || execution.observed !== true || execution.index !== graph.index) {
+    throw new Error(`${label}.evidence.entryScript execution does not match the HTML graph`);
+  }
+}
+
 function verifyPackageRuntimeEvidence(report, label) {
   if (!report || typeof report !== 'object') throw new Error(`${label} is missing`);
   const declared = report.declaredRuntime;
@@ -54,13 +72,16 @@ if (stored.artifacts?.runtimeExecutable?.sha256 !== actual.artifacts.runtimeExec
 if (stored.artifacts?.runtimeExecutable?.expectedSha256 !== actual.artifacts.runtimeExecutable.expectedSha256) throw new Error('release manifest expected runtime hash is stale');
 if (stored.nacp?.title !== actual.nacp.title || stored.nacp?.id !== actual.nacp.id) throw new Error('release manifest NACP summary is stale');
 if (JSON.stringify(stored.packageAcceptance) !== JSON.stringify(actual.packageAcceptance)) throw new Error('release manifest package acceptance is stale');
-if (actual.packageAcceptance.status !== 'pass' || actual.packageAcceptance.executedGameScripts !== false || actual.packageAcceptance.runtimeBehavior !== 'not-observed') throw new Error('generic package contract acceptance gate did not pass');
+if (actual.packageAcceptance.status !== 'pass' || actual.packageAcceptance.executedGameScripts !== false || actual.packageAcceptance.runtimeBehavior !== 'not-observed' || !['validated-only', 'not-declared'].includes(actual.packageAcceptance.checks?.entryScript)) throw new Error('generic package contract acceptance gate did not pass');
 const cleanup = actual.packageAcceptance.evidence?.sessionCleanup;
 if (!cleanup || cleanup.trackedTimeouts !== cleanup.timeoutCancelAttempts || cleanup.trackedIntervals !== cleanup.intervalCancelAttempts || cleanup.timeoutCancelFailures !== 0 || cleanup.intervalCancelFailures !== 0 || cleanup.patchRestoreFailures !== 0) throw new Error('generic package session cleanup evidence did not pass');
+verifyEntryScriptEvidence(actual.packageAcceptance, 'actual.packageAcceptance', 'not-observed');
 if (JSON.stringify(stored.packageRuntimeAcceptance) !== JSON.stringify(actual.packageRuntimeAcceptance)) throw new Error('release manifest package runtime acceptance is stale');
 verifyPackageRuntimeEvidence(stored.packageRuntimeAcceptance, 'stored.packageRuntimeAcceptance');
 verifyPackageRuntimeEvidence(actual.packageRuntimeAcceptance, 'actual.packageRuntimeAcceptance');
-if (actual.packageRuntimeAcceptance.status !== 'pass' || actual.packageRuntimeAcceptance.executedGameScripts !== true || actual.packageRuntimeAcceptance.runtimeBehavior !== 'observed' || actual.packageRuntimeAcceptance.evidence?.neutralMarkerRequired !== false) throw new Error('generic package runtime acceptance gate did not pass');
+verifyEntryScriptEvidence(stored.packageRuntimeAcceptance, 'stored.packageRuntimeAcceptance', 'observed');
+verifyEntryScriptEvidence(actual.packageRuntimeAcceptance, 'actual.packageRuntimeAcceptance', 'observed');
+if (actual.packageRuntimeAcceptance.status !== 'pass' || actual.packageRuntimeAcceptance.executedGameScripts !== true || actual.packageRuntimeAcceptance.runtimeBehavior !== 'observed' || actual.packageRuntimeAcceptance.checks?.entryScript !== 'pass' || actual.packageRuntimeAcceptance.evidence?.neutralMarkerRequired !== false) throw new Error('generic package runtime acceptance gate did not pass');
 if (JSON.stringify(stored.hostAcceptance) !== JSON.stringify(actual.hostAcceptance)) throw new Error('release manifest host acceptance is stale');
 if (JSON.stringify(stored.overlayAcceptance) !== JSON.stringify(actual.overlayAcceptance)) throw new Error('release manifest overlay acceptance is stale');
 if (actual.overlayAcceptance.status !== 'pass' || actual.overlayAcceptance.evidence?.overlay?.profile !== 'mod-first') throw new Error('mod overlay acceptance gate did not pass');

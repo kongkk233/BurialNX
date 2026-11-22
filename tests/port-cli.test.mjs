@@ -74,6 +74,7 @@ test('generic package acceptance does not execute game scripts or require neutra
   assert.equal(result.status, 'pass');
   assert.equal(result.executedGameScripts, false);
   assert.equal(result.runtimeBehavior, 'not-observed');
+  assert.equal(result.checks.entryScript, 'validated-only');
   assert.equal(result.checks.sessionCleanup, 'pass');
   assert.deepEqual(result.evidence.sessionCleanup, {
     trackedTimeouts: 1,
@@ -85,6 +86,11 @@ test('generic package acceptance does not execute game scripts or require neutra
     patchRestoreFailures: 0,
   });
   assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);
+  assert.deepEqual(result.evidence.entryScript, {
+    declared: 'js/main.js',
+    graph: { status: 'pass', path: 'js/main.js', index: 1 },
+    execution: { status: 'not-observed', observed: false, index: null },
+  });
   assert.match(result.evidence.save.roundTrip, /profile-saves\/file1\.generic$/);
 });
 
@@ -93,6 +99,7 @@ test('generic package runtime acceptance executes scripts without neutral marker
   assert.equal(result.status, 'pass');
   assert.equal(result.executedGameScripts, true);
   assert.equal(result.runtimeBehavior, 'observed');
+  assert.equal(result.checks.entryScript, 'pass');
   assert.deepEqual(result.declaredRuntime, { kind: 'nwjs', version: 'fixture' });
   assert.equal(result.actualExecution.mode, 'host-runtime');
   assert.equal(result.actualExecution.engine, 'vm-host-fixture');
@@ -103,6 +110,11 @@ test('generic package runtime acceptance executes scripts without neutral marker
   assert.equal(result.actualExecution.externalRuntime.status, 'not-verified');
   assert.match(result.actualExecution.externalRuntime.reason, /no external runtime process was launched or version-verified/);
   assert.notEqual(result.actualExecution.externalRuntime.status, 'verified');
+  assert.deepEqual(result.evidence.entryScript, {
+    declared: 'js/main.js',
+    graph: { status: 'pass', path: 'js/main.js', index: 1 },
+    execution: { status: 'observed', observed: true, index: 1 },
+  });
   assert.equal(result.evidence.neutralMarkerRequired, false);
   assert.equal(result.evidence.startup, 'scene-boot');
   assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);

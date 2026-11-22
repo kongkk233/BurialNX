@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { checkPort, containedFile } from './check-port.mjs';
 import { loadBundledModule } from './ts-bundle.mjs';
+import { entryScriptEvidence } from './entry-script-evidence.mjs';
 
 const fixture = resolve('tests/fixtures/generic-mv/www');
 
@@ -33,6 +34,7 @@ export async function acceptPackageRuntime({ gameRoot = fixture, modRoot = null 
     vm.runInNewContext(new TextDecoder().decode(bytes), sandbox, { filename: `${file.root}/${file.path}` });
     executedScripts.push(file.path);
   }
+  const entryScript = entryScriptEvidence({ profile: { entry: { script: port.contracts.entryScript.path } }, scriptGraph: port.scriptGraph.paths, executedScripts });
   assert(sandbox.__genericRuntimeFixtureLoaded === true, 'generic entry script did not execute');
   const startup = runtimePlan.startGame(sandbox);
   assert(['onload', 'already-started', 'scene-boot'].includes(startup), `unsupported runtime start result: ${startup}`);
@@ -69,6 +71,7 @@ export async function acceptPackageRuntime({ gameRoot = fixture, modRoot = null 
       profile: 'pass',
       entry: 'pass',
       scriptGraph: 'pass',
+      entryScript: entryScript.execution.status === 'observed' ? 'pass' : 'not-declared',
       scriptExecution: 'pass',
       runtimeStart: 'pass',
     },
@@ -76,6 +79,7 @@ export async function acceptPackageRuntime({ gameRoot = fixture, modRoot = null 
       profileId: port.profile.id,
       entry: port.entry.path,
       scripts: executedScripts,
+      entryScript,
       startup,
       scene: startup === 'scene-boot' ? 'Scene_Boot' : null,
       neutralMarkerRequired: false,

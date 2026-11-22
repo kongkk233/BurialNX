@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { checkPort, containedFile, safeRelative } from './check-port.mjs';
 import { loadBundledModule } from './ts-bundle.mjs';
+import { entryScriptEvidence } from './entry-script-evidence.mjs';
 
 const fixture = resolve('tests/fixtures/generic-mv/www');
 
@@ -47,6 +48,7 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
   assert(entry.length > 0, 'entry HTML is empty');
   assert(port.scriptGraph.files.length === port.scriptGraph.paths.length, 'ordered script graph is incomplete');
   assert(port.scriptGraph.files.every((file, index) => file.path === port.scriptGraph.paths[index]), 'ordered script graph changed during acceptance');
+  const entryScript = entryScriptEvidence({ profile: { entry: { script: port.contracts.entryScript.path } }, scriptGraph: port.scriptGraph.paths });
   for (const file of port.scriptGraph.files) {
     const root = port.roots[file.root];
     const bytes = await containedFile(root, file.path, `script ${file.path}`, false);
@@ -130,6 +132,7 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
       profile: 'pass',
       entry: 'pass',
       scriptGraph: 'pass',
+      entryScript: entryScript.declared === null ? 'not-declared' : 'validated-only',
       assetPaths: 'pass',
       mediaPolicy: 'pass',
       saveContract: 'pass',
@@ -140,6 +143,7 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
       profileId: port.profile.id,
       entry: port.entry.path,
       scripts: port.scriptGraph.paths,
+      entryScript,
       save: { directory: port.contracts.save.directory, extension: port.contracts.save.extension, roundTrip: expectedPath },
       media: port.contracts.media,
       sessionCleanup: {
