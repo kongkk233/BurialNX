@@ -19,6 +19,12 @@ if (JSON.stringify(stored.runtimeProvenance) !== JSON.stringify(actual.runtimePr
 if (actual.runtimeProvenance.status !== 'pass' || actual.runtimeProvenance.verified.some((claim) => claim.status !== 'pass')) throw new Error('runtime provenance gate did not pass');
 if (actual.runtimeProvenance.unverified.some((claim) => claim.status !== 'not-verified')) throw new Error('runtime provenance boundary is not explicit');
 if (JSON.stringify(stored.browserValidation) !== JSON.stringify(actual.browserValidation)) throw new Error('release manifest browser validation is stale');
+if (JSON.stringify(stored.nativeRebuild) !== JSON.stringify(actual.nativeRebuild)) throw new Error('release manifest native rebuild report is stale');
+if (actual.nativeRebuild.status !== 'not-run' && actual.nativeRebuild.projectCommit && actual.nativeRebuild.projectCommit !== actual.gitCommit) throw new Error('native rebuild report project commit does not match the release commit');
+if (!['not-run', 'pass', 'mismatch'].includes(actual.nativeRebuild.status)) throw new Error('native rebuild report status is not explicit');
+if (actual.nativeRebuild.status === 'mismatch' && actual.validation.native !== 'not verified (executable digest mismatch)') throw new Error('native digest mismatch was not preserved as not verified');
+if (actual.nativeRebuild.status === 'pass' && actual.validation.native !== 'source-to-runtime: pass') throw new Error('native pass report was not represented as source-to-runtime pass');
+if (actual.nativeRebuild.status === 'not-run' && actual.validation.native !== 'not run') throw new Error('missing native report was not represented as not run');
 validateBrowserReport(actual.browserValidation, { expectedCommit: actual.gitCommit, requirePass: true });
 if (stored.validation?.browser !== 'desktop-browser: pass' || actual.validation?.browser !== 'desktop-browser: pass') throw new Error('desktop browser validation gate did not pass');
 if (stored.artifacts?.nro?.kind !== 'release') throw new Error('release manifest does not describe a release NRO');

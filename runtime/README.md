@@ -15,7 +15,7 @@
 ## 来源和复现
 
 - nx.js：`v1.0.0-beta.7`，提交 `a649611a1a4daca09924cd1a436c7ca786f91592`，MIT。精确摘要见 `manifest.json`。
-- 设备端静态库取自上游 CI 使用的 `ghcr.io/tootallnate/pacman-packages@sha256:92880d77878639768fe3696800104d68de1dfec65802bf7915689dd7bd718e53`（amd64 manifest `sha256:5c07e95cf5691a91d6782ead058a664a22961cc8786d6588666ca6bb88babde5`）。使用该镜像同版的 devkitA64 GCC 15.2.0-7、binutils 2.45.1-2、libnx 4.12.0、Switch FFmpeg 7.1-5 和其余静态依赖。本次实际使用 ARM Mac 版 devkitPro cross tools，并校验其发行签名。
+- 本次 pinned amd64 rebuild 的复核边界是 source archive SHA-256 `0477b6b094b69984f97cac3f2a84fef352e2e7bdb01387596425662b2a7622d3` 与镜像 `ghcr.io/tootallnate/pacman-packages@sha256:92880d77878639768fe3696800104d68de1dfec65802bf7915689dd7bd718e53`；该镜像提供 devkitA64 GCC 15.2.0-7、binutils 2.45.1-2、libnx 4.12.0、Switch FFmpeg 7.1-5 和其余静态依赖。不要将历史构建记录或未独立绑定的本机工具链描述为本次实际使用的工具。
 - FFmpeg 不是只有 LGPL 的默认构建：Switch 的 7.1-5 包启用了 GPL。该组件的许可文件在 `LICENSES/FFmpeg-*`，精确的 [设备包配方](https://github.com/devkitPro/pacman-packages/tree/5cf3a4da7665a04032565a3e788656cb485dd279/switch/ffmpeg) 与补丁应与 [FFmpeg 7.1 源码](https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz) 配合使用。其他上游依赖的许可继续适用；这些说明不等同于对任意重新发行的法律审查。
 
 重新编译程序段：设置标准 `DEVKITPRO`，确保其 `portlibs/switch` 带有上游 CI 的 V8、Skia、FFmpeg、libuv 等目标库，并安装 Node 22、make、jq、pkg-config、patch。若工具链放在非标准目录，确保其 `.pc` 文件中的安装前缀可正确解析（本次只调整工作区副本）。从 BurialNX 工程根目录执行：

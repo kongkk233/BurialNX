@@ -9,6 +9,7 @@ release-manifest.json
 reproducibility.json
 neutral-smoke.json
 browser-validation.json
+native-rebuild-report.json
 .DS_Store
 Game/
 games/

@@ -8,9 +8,15 @@ const [up,out]=process.argv.slice(2);if(!up||!out||!process.env.DEVKITPRO)throw 
 const root=fileURLToPath(new URL('../',import.meta.url)),src=fs.realpathSync(up),work=path.resolve(out),sdk=fs.realpathSync(process.env.DEVKITPRO);
 if(work===src || work.startsWith(src+path.sep) || src.startsWith(work+path.sep) || fs.existsSync(work))throw Error('Build directory must be new and outside upstream checkout');
 if([work,sdk].some(v=>/\s/.test(v)))throw Error('The devkitPro Makefiles need paths without spaces');
-const hash=b=>createHash('sha256').update(b).digest('hex');const initial=fs.readFileSync(path.join(src,'source/media-decoder.cc'));
+const hash=b=>createHash('sha256').update(b).digest('hex');
+const safeCommand=(name,args,cwd)=>{try{return cmd(name,args,{cwd,encoding:'utf8'}).trim()||null;}catch{return null;}};
+const projectCommit=safeCommand('git',['-C',root,'rev-parse','HEAD']);
+const upstreamRevision=safeCommand('git',['-C',src,'rev-parse','HEAD'])||'a649611a1a4daca09924cd1a436c7ca786f91592';
+const reportPath=path.join(work,'native-rebuild-report.json');
+const writeReport=report=>{fs.mkdirSync(work,{recursive:true});fs.writeFileSync(reportPath,`${JSON.stringify(report,null,2)}\n`);};
+const initial=fs.readFileSync(path.join(src,'source/media-decoder.cc'));
 if(hash(initial)!=='63f1fc541f57dc44b802e99744e2e0f824d9f99668cc6c8402c529c13a5a2327')throw Error('Expected unmodified nx.js v1.0.0-beta.7 (a649611a1a4daca09924cd1a436c7ca786f91592)');
-if(fs.existsSync(path.join(src,'.git'))){const head=cmd('git',['-C',src,'rev-parse','HEAD'],{encoding:'utf8'}).trim();if(head!=='a649611a1a4daca09924cd1a436c7ca786f91592')throw Error('Incorrect upstream git revision');}
+if(fs.existsSync(path.join(src,'.git'))&&upstreamRevision!=='a649611a1a4daca09924cd1a436c7ca786f91592')throw Error('Incorrect upstream git revision');
 fs.mkdirSync(work,{recursive:true});const cp=(p)=>{const dest=path.join(work,p);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.cpSync(path.join(src,p),dest,{recursive:true});};
 for(const p of ['source','Makefile','tools/embed-runtime.mjs','packages/runtime/package.json','icon.jpg','npdm.json','include','data','exefs_src'])if(fs.existsSync(path.join(src,p)))cp(p);
 cmd('patch',['-p1','-i',path.join(root,'patches/nxjs-video-audio-preroll.patch')],{cwd:work,stdio:'inherit'});
@@ -27,5 +33,8 @@ write('packages/runtime/runtime.js',Buffer.concat([js,Buffer.from('\n')]));write
 const args=['-j'+Math.max(1,Math.min(12,Number(process.env.JOBS)||4)),`DEFINES=-ffile-prefix-map=${sdk}=/opt/devkitpro -ffile-prefix-map=${work}=/build/nxjs`,'LIBNX_VERSION=4.12.0','LIBTURBOJPEG_VERSION=2.1.2'];
 cmd('make',args,{cwd:work,env:{...process.env,DEVKITPRO:sdk,PATH:[path.join(sdk,'devkitA64/bin'),path.join(sdk,'tools/bin'),process.env.PATH].join(':')},stdio:'inherit'});
 const raw=fs.readFileSync(path.join(work,'nxjs.nro')),n=raw.readUInt32LE(24),exe=raw.subarray(0,n);if(raw.toString('ascii',n,n+4)!=='ASET')throw Error('No ASET');
-const actual=hash(exe);console.log('Built NRO executable SHA-256:',actual);if(actual!==pinnedCode)throw Error('Different linker output: keep for inspection; NOT replacing the distributed build. Use the documented SDK and path maps.');
+const actual=hash(exe),rebuiltNroHash=hash(raw),elfPath=path.join(work,'nxjs.elf'),readelf=path.join(sdk,'devkitA64/bin/aarch64-none-elf-readelf'),buildId=(safeCommand(readelf,['-n',elfPath],work)||'').match(/Build ID:\s*([0-9a-f]+)/i)?.[1]||null;
+const status=actual===pinnedCode?'pass':'mismatch';
+writeReport({schema:1,tool:'rebuild-preroll-runtime',status,projectCommit,upstreamRevision,sourceArchiveSha256:process.env.BURIALNX_SOURCE_ARCHIVE_SHA256||null,sdkImage:process.env.BURIALNX_SDK_IMAGE||null,expectedExecutableSha256:pinnedCode,rebuiltExecutableSha256:actual,rawProgramBytes:n,rebuiltNroSha256:rebuiltNroHash,rebuiltNroBytes:raw.byteLength,nroBuildId:buildId,reason:status==='mismatch'?`rebuilt executable digest ${actual} does not match expected distributed digest ${pinnedCode}; fail closed and did not replace runtime/nxjs-preroll.nro-code.gz`:null});
+console.log('Built NRO executable SHA-256:',actual);if(status==='mismatch')throw Error('Different linker output: keep for inspection; NOT replacing the distributed build. Use the documented SDK and path maps.');
 write('nxjs-preroll.nro-code.gz',gzipSync(exe,{level:6}));console.log('Recreated verified executable; the project and upstream checkout were not overwritten.');

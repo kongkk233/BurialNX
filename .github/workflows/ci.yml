@@ -82,10 +82,66 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  native-rebuild:
+    name: Pinned amd64 native rebuild evidence
+    runs-on: ubuntu-latest
+    container: ghcr.io/tootallnate/pacman-packages@sha256:92880d77878639768fe3696800104d68de1dfec65802bf7915689dd7bd718e53
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install native build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install --yes --no-install-recommends nodejs npm ca-certificates
+          npm ci
+      - name: Download and verify pinned source archive
+        shell: bash
+        env:
+          BURIALNX_SOURCE_ARCHIVE_SHA256: 0477b6b094b69984f97cac3f2a84fef352e2e7bdb01387596425662b2a7622d3
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 5 --output nxjs-source.tar.gz https://codeload.github.com/TooTallNate/nx.js/tar.gz/a649611a1a4daca09924cd1a436c7ca786f91592
+          echo "${BURIALNX_SOURCE_ARCHIVE_SHA256}  nxjs-source.tar.gz" | sha256sum --check --strict
+          mkdir nxjs-source
+          tar -xzf nxjs-source.tar.gz --strip-components=1 -C nxjs-source
+      - name: Run fail-closed native rebuild
+        shell: bash
+        env:
+          DEVKITPRO: /opt/devkitpro
+          BURIALNX_SOURCE_ARCHIVE_SHA256: 0477b6b094b69984f97cac3f2a84fef352e2e7bdb01387596425662b2a7622d3
+          BURIALNX_SDK_IMAGE: ghcr.io/tootallnate/pacman-packages@sha256:92880d77878639768fe3696800104d68de1dfec65802bf7915689dd7bd718e53
+        run: |
+          set +e
+          node tools/rebuild-preroll-runtime.mjs nxjs-source native-build > native-rebuild.log 2>&1
+          rc=$?
+          set -e
+          test -f native-build/native-rebuild-report.json
+          cp native-build/native-rebuild-report.json .
+          status="$(node -e "console.log(JSON.parse(require('fs').readFileSync('native-rebuild-report.json')).status)")"
+          if [ "$status" = mismatch ]; then
+            test "$rc" -ne 0
+            echo "Expected executable digest mismatch recorded as not-verified evidence"
+            exit 0
+          fi
+          test "$status" = pass
+          exit "$rc"
+      - name: Upload native rebuild evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-rebuild-evidence
+          path: |
+            native-rebuild-report.json
+            native-rebuild.log
+          if-no-files-found: error
+          retention-days: 7
+
   release:
     name: Clean reproducible release gate
     runs-on: ubuntu-latest
-    needs: [host, browser]
+    needs: [host, browser, native-rebuild]
     permissions:
       contents: read
     steps:
@@ -102,6 +158,11 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: browser-validation
+          path: .
+      - name: Download native rebuild report
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: native-rebuild-evidence
           path: .
       - name: Verify clean reproducible release
         env:

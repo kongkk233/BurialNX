@@ -73,6 +73,22 @@ async function sourceTreeSha256(project) {
   return hash.digest('hex');
 }
 
+async function nativeRebuildReport(project) {
+  try {
+    const report = JSON.parse(await readFile(resolve(project, 'native-rebuild-report.json'), 'utf8'));
+    if (report.schema !== 1 || report.tool !== 'rebuild-preroll-runtime' || !['pass', 'mismatch'].includes(report.status)) {
+      throw new Error('native-rebuild-report.json has an invalid report identity');
+    }
+    if (report.expectedExecutableSha256 !== pinnedCode) throw new Error('native-rebuild-report.json expected executable digest is not the distributed digest');
+    if (report.status === 'pass' && report.rebuiltExecutableSha256 !== report.expectedExecutableSha256) throw new Error('native-rebuild-report.json pass status has a mismatched executable digest');
+    if (report.status === 'mismatch' && report.rebuiltExecutableSha256 === report.expectedExecutableSha256) throw new Error('native-rebuild-report.json mismatch status has the expected executable digest');
+    return report;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+    return { schema: 1, tool: 'rebuild-preroll-runtime', status: 'not-run', reason: 'native-rebuild-report.json was not provided' };
+  }
+}
+
 async function reproducibilityReport(project) {
   try {
     return JSON.parse(await readFile(resolve(project, 'reproducibility.json'), 'utf8'));
@@ -114,8 +130,10 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   const neutralSmoke = await neutralSmokeReport(project);
   const reproducibility = await reproducibilityReport(project);
   const browserValidation = await readBrowserValidationReport(project);
+  const nativeRebuild = await nativeRebuildReport(project);
   const lockfile = await readFile(resolve(project, 'package-lock.json'));
   const gitCommit = command('git', ['rev-parse', 'HEAD'], project);
+  if (nativeRebuild.projectCommit && nativeRebuild.projectCommit !== gitCommit) throw new Error('native rebuild report project commit does not match the release commit');
   const gitStatus = command('git', ['status', '--porcelain=v1', '--untracked-files=all'], project);
   const sourceTree = await sourceTreeSha256(project);
   const expectedId = String(packageJson.nacp?.id ?? '').toLowerCase().replace(/^0x/, '').padStart(16, '0');
@@ -130,6 +148,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
     toolchain: { node: process.version, npm: command('npm', ['--version'], project), lockfileSha256: digest(lockfile) },
     runtimeProvenance,
     browserValidation: { ...browserValidation, reportPath: BROWSER_REPORT_PATH },
+    nativeRebuild,
     artifacts: {
       nro: { path: relative(project, absoluteNro), kind: 'release', sha256: digest(buffer), bytes: buffer.byteLength, executableSha256: digest(buffer.subarray(0, layout.nroSize)) },
       runtimeExecutable: { sha256: digest(buffer.subarray(0, layout.nroSize)), expectedSha256: pinnedCode, source: 'computed from final NRO executable section' },
@@ -175,7 +194,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       typecheck: 'run by verify:release',
       smoke: neutralSmoke.status === 'pass' ? 'neutral-port-contract: pass' : neutralSmoke.status,
       browser: browserValidation.status === 'pass' ? 'desktop-browser: pass' : browserValidation.status,
-      native: 'not run',
+      native: nativeRebuild.status === 'pass' ? 'source-to-runtime: pass' : nativeRebuild.status === 'mismatch' ? 'not verified (executable digest mismatch)' : 'not run',
       hardware: runtimeManifest.hardwarePlaybackObserved === true ? 'observed in runtime manifest' : 'not verified',
     },
   };
