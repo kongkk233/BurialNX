@@ -69,6 +69,15 @@ async function sourceTreeSha256(project) {
   return hash.digest('hex');
 }
 
+async function reproducibilityReport(project) {
+  try {
+    return JSON.parse(await readFile(resolve(project, 'reproducibility.json'), 'utf8'));
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+    return { schema: 1, status: 'not-run', byteIdentical: false, method: 'two independent host NRO builds from the same clean checkout' };
+  }
+}
+
 export async function generateManifest(nroPath = 'burialnx.nro', { project = resolve('.'), write = true } = {}) {
   const absoluteNro = resolve(project, nroPath);
   const buffer = await readFile(absoluteNro);
@@ -78,6 +87,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   const runtimeManifest = JSON.parse(await readFile(resolve(project, 'runtime/manifest.json'), 'utf8'));
   const nacp = nacpSummary(buffer, layout);
   const hostAcceptance = await acceptHost({ gameRoot: resolve(project, 'tests/fixtures/neutral-mv/www') });
+  const reproducibility = await reproducibilityReport(project);
   const lockfile = await readFile(resolve(project, 'package-lock.json'));
   const gitCommit = command('git', ['rev-parse', 'HEAD'], project);
   const gitStatus = command('git', ['status', '--porcelain=v1', '--untracked-files=all'], project);
@@ -103,12 +113,14 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       checks: hostAcceptance.checks,
       fixture: relative(project, resolve(project, 'tests/fixtures/neutral-mv/www')),
     },
+    reproducibility,
     validation: {
       structural: 'pass',
       runtime: 'pass',
       profile: hostAcceptance.checks.profile,
       portCheck: hostAcceptance.checks.entry === 'pass' && hostAcceptance.checks.scriptGraph === 'pass' ? 'pass' : 'fail',
       acceptHost: hostAcceptance.status,
+      reproducibility: reproducibility.status,
       npmTest: 'run by verify:release',
       typecheck: 'run by verify:release',
       smoke: 'not run by manifest generator',

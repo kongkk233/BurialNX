@@ -1,6 +1,6 @@
 # Release validation
 
-`npm run verify:release` first runs the executable profile validator, the neutral `port:check`, and `accept:host`; it then runs host tests, the controlled TypeScript module/bundle check, builds the release NRO, checks the NRO structural header, and writes `release-manifest.json`. The manifest records package version, git commit, whether the worktree was dirty, a deterministic source-tree SHA-256, Node/npm versions, lockfile SHA-256, NRO SHA-256, runtime executable digest (or an explicit null), NACP source summary, and the neutral host acceptance checks. A dirty manifest is useful for local review but must not be published as the final release provenance; generate the final artifact from the clean `main` commit.
+`npm run verify:release` first runs the executable profile validator, the neutral `port:check`, and `accept:host`; it then runs host tests, the controlled TypeScript module/bundle check, asserts a clean worktree, performs two host NRO builds and compares their byte hashes, checks the NRO structural header, and writes `release-manifest.json`. The manifest records package version, git commit, whether the worktree was dirty, a deterministic source-tree SHA-256, Node/npm versions, lockfile SHA-256, NRO SHA-256, runtime executable digest (or an explicit null), NACP source summary, neutral host acceptance checks, and the two-build reproducibility report. Dirty worktrees and non-identical host builds are release-gate failures; generate the final artifact from the clean `main` commit.
 
 Validation levels:
 
