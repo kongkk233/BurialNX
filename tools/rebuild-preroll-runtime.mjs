@@ -10,7 +10,7 @@ if(work===src || work.startsWith(src+path.sep) || src.startsWith(work+path.sep) 
 if([work,sdk].some(v=>/\s/.test(v)))throw Error('The devkitPro Makefiles need paths without spaces');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const safeCommand=(name,args,cwd)=>{try{return cmd(name,args,{cwd,encoding:'utf8'}).trim()||null;}catch{return null;}};
-const projectCommit=safeCommand('git',['-C',root,'rev-parse','HEAD']);
+const projectCommit=process.env.BURIALNX_PROJECT_COMMIT||safeCommand('git',['-C',root,'rev-parse','HEAD']);
 const upstreamRevision=safeCommand('git',['-C',src,'rev-parse','HEAD'])||'a649611a1a4daca09924cd1a436c7ca786f91592';
 const reportPath=path.join(work,'native-rebuild-report.json');
 const writeReport=report=>{fs.mkdirSync(work,{recursive:true});fs.writeFileSync(reportPath,`${JSON.stringify(report,null,2)}\n`);};

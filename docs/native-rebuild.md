@@ -16,6 +16,6 @@ The pinned amd64 source rebuild is an evidence job, not a release replacement st
 
 Conclusion: native source-to-runtime is **not verified**. The rebuilt executable digest does not equal the distributed expected digest, so the rebuild script fails closed and does not replace `runtime/nxjs-preroll.nro-code.gz`.
 
-The generated `native-rebuild-report.json` records the source revision, release project commit when available, pinned inputs, both digests, NRO size/build-id, and the explicit mismatch reason. A missing report is represented in the release manifest as schema 1 / `status: not-run`; a mismatch is evidence of an attempted rebuild, never a native pass.
+The generated `native-rebuild-report.json` records the source revision, the 40-character release project commit, pinned inputs, both digests, NRO size/build-id, and the explicit mismatch reason. CI supplies the release commit explicitly because the pinned container does not include `git`; a supplied pass/mismatch report without that binding is rejected by the release verifier. A missing report is represented in the release manifest as schema 1 / `status: not-run`; a mismatch is evidence of an attempted rebuild, never a native pass.
 
 The CI evidence job uses the pinned image, downloads and verifies the archive, runs the existing rebuild script, uploads the report and log, and is non-gating only for this expected digest mismatch. Unexpected rebuild errors remain failures. This evidence does not claim hardware playback, commercial-game validation, or any additional native capability.

@@ -79,6 +79,9 @@ async function nativeRebuildReport(project) {
     if (report.schema !== 1 || report.tool !== 'rebuild-preroll-runtime' || !['pass', 'mismatch'].includes(report.status)) {
       throw new Error('native-rebuild-report.json has an invalid report identity');
     }
+    if (typeof report.projectCommit !== 'string' || !/^[0-9a-f]{40}$/i.test(report.projectCommit)) {
+      throw new Error('native-rebuild-report.json is not bound to a release commit');
+    }
     if (report.expectedExecutableSha256 !== pinnedCode) throw new Error('native-rebuild-report.json expected executable digest is not the distributed digest');
     if (report.status === 'pass' && report.rebuiltExecutableSha256 !== report.expectedExecutableSha256) throw new Error('native-rebuild-report.json pass status has a mismatched executable digest');
     if (report.status === 'mismatch' && report.rebuiltExecutableSha256 === report.expectedExecutableSha256) throw new Error('native-rebuild-report.json mismatch status has the expected executable digest');
