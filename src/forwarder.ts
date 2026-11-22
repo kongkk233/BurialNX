@@ -270,7 +270,7 @@ export async function encodeCoverToIconJpeg(cover: { path?: string; bytes?: Arra
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, 256, 256);
 
-                let img: Image | null = null;
+                let img: any = null;
                 if (coverPath) {
                         log(`icon: loading Image from sdmc path: ${coverPath}`);
                         img = await loadImageFromUrl(coverPath, log);
@@ -332,7 +332,7 @@ export async function encodeCoverToIconJpeg(cover: { path?: string; bytes?: Arra
 }
 
 /** Load an Image from a URL, logging state transitions; null on failure or 8s timeout. */
-function loadImageFromUrl(url: string, log: (s: string) => void): Promise<Image | null> {
+function loadImageFromUrl(url: string, log: (s: string) => void): Promise<any> {
         return new Promise((resolve) => {
                 try {
                         log(`icon: new Image(); img.src = ${url.slice(0, 70)}`);

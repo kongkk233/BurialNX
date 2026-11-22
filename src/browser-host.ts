@@ -34,7 +34,7 @@ export function resourceFetch(assets: Reader, nativeFetch: typeof fetch, log: (s
 export function createBrowserHost(assets: Reader, filter: ScriptFilter, log: (s: string) => void, pngFix = false, directScreen = true, reportRequestError?: (error: Error, responseText: string) => void, resolveMovie: MovieResolver = createMovieResolver(assets), resolveSound: MovieResolver = createAudioResolver(assets)) {
         let document: any;
         let gameCanvas: CanvasNode | undefined;
-        const screenContext = screen.getContext('2d')!;
+        const screenContext = (screen as any).getContext('2d')!;
         const rawFetch = globalThis.fetch as ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) & { __burialnxNativeFetch?: typeof globalThis.fetch };
         const nativeFetch = rawFetch?.__burialnxNativeFetch || rawFetch.bind(globalThis);
         let fitScreen = true;
@@ -93,7 +93,7 @@ export function createBrowserHost(assets: Reader, filter: ScriptFilter, log: (s:
         }
         class CanvasNode extends Node {
                 private w = 300; private h = 150;
-                private canvas: OffscreenCanvas | typeof screen | undefined;
+                private canvas: any;
                 private context: any;
                 preserveSize = false;
                 direct = false;
@@ -243,7 +243,7 @@ export function createBrowserHost(assets: Reader, filter: ScriptFilter, log: (s:
                 if (!wasMovieVisible && gameCanvas?.direct) {
                         try {
                                 beforeDirectMovie=new OffscreenCanvas(sw,sh);
-                                beforeDirectMovie.getContext('2d')!.drawImage(screen,0,0);
+                                beforeDirectMovie.getContext('2d')!.drawImage(screen as any,0,0);
                         } catch { beforeDirectMovie=undefined; } // a later game render also restores direct mode
                 }
                 wasMovieVisible = true;
@@ -262,8 +262,8 @@ export function createBrowserHost(assets: Reader, filter: ScriptFilter, log: (s:
                         switch (tag.toLowerCase()) {
                                 case 'canvas': return new CanvasNode();
                                 case 'script': return new ScriptNode();
-                                case 'audio': return new voices.MovieNode();
-                                case 'video': return new movies.MovieNode();
+                                case 'audio': return new (voices.MovieNode as any)();
+                                case 'video': return new (movies.MovieNode as any)();
                                 case 'source': return new SourceNode();
                                 default: return new Node(tag.toUpperCase());
                         }

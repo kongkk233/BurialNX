@@ -35,7 +35,7 @@ import { renderKeymap, renderRenameKb } from './keymap-render';
 import { teardownGame, quitApp, chainToLibrary, removeLegacyExitFlagFile, realExit } from './game-lifecycle';
 import { fail, failRequest, registerSessionListeners, removeBeforeUnloadListener, removeAllSessionListeners } from './error-handling';
 import { launch } from './game-launch';
-import { validSaveLocation, remember, rememberLibrary, getGameLanguage, setGameLanguage, currentSelection, loadEntryIntoState, startOrChooseSaves, chooseSaves, settingsPath } from './selection';
+import { validSaveLocation, remember, rememberLibrary, getGameLanguage, setGameLanguage, currentSelection, loadEntryIntoState, startOrChooseSaves, chooseSaves } from './selection';
 import { suggestGameName, finishAddGame, startForwarderBuild } from './add-game';
 import { mergedKeymap, openKeymapEditor, saveEditingKeymap, applyPreset, handleKeymapTouch } from './keymap-editor';
 import { frame } from './frame-loop';
@@ -52,7 +52,7 @@ const settingsPath = 'sdmc:/switch/burialnx/settings.json';
 installLocalStorageShim();
 
 try {
-        S.ctx = screen.getContext('2d');
+        S.ctx = (screen as any).getContext('2d');
         log(`_2: screen.getContext returned ${S.ctx ? 'a context' : 'null'}`);
 } catch (error) {
         log(`_2: screen.getContext threw: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`);

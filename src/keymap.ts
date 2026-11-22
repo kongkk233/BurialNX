@@ -1,4 +1,5 @@
 import { safeSdPath } from './settings';
+import { atomicWriteSyncIfSupported } from './atomic-persistence';
 
 /** Joycon → virtual mouse/keyboard remapping (JSON-serializable KeyMap + presets). */
 export type VirtualKey =
@@ -181,6 +182,9 @@ const KEYMAP_PATH = 'sdmc:/switch/burialnx/keymap.json';
 export interface KeyMapAccess {
         readFileSync(path: string): ArrayBuffer | null;
         writeFileSync(path: string, value: string | ArrayBuffer): void;
+        renameSync?(from: string, to: string): void;
+        removeSync?(path: string): void;
+        unlinkSync?(path: string): void;
         mkdirSync(path: string): void;
 }
 
@@ -195,7 +199,8 @@ export function loadKeyMap(fs: KeyMapAccess): KeyMap {
 export function saveKeyMap(fs: KeyMapAccess, map: KeyMap): boolean {
         try {
                 try { fs.mkdirSync('sdmc:/switch/burialnx'); } catch { /* may already exist */ }
-                fs.writeFileSync(KEYMAP_PATH, JSON.stringify(map, null, 2));
+                const data = JSON.stringify(map, null, 2);
+                if (!atomicWriteSyncIfSupported(fs, KEYMAP_PATH, data)) fs.writeFileSync(KEYMAP_PATH, data);
                 return true;
         } catch (error) { console.error(`Could not save key map: ${String(error)}`); return false; }
 }

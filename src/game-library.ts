@@ -1,5 +1,6 @@
 import { parseSelection, safeSdPath, type GameSelection, type SaveLocation } from './settings';
 import { parseKeyMap, type KeyMap } from './keymap';
+import { atomicWriteSyncIfSupported } from './atomic-persistence';
 
 /** Persisted per-game FPS-experimental toggle set. Stored on the library entry so each
  *  game keeps its own settings (see docs/doc/fps-optimizations.md). All default false —
@@ -142,6 +143,9 @@ export function toSelection(entry: LibraryEntry): GameSelection {
 export interface LibraryAccess {
         readFileSync(path: string): ArrayBuffer | null;
         writeFileSync(path: string, value: string | ArrayBuffer): void;
+        renameSync?(from: string, to: string): void;
+        removeSync?(path: string): void;
+        unlinkSync?(path: string): void;
         statSync(path: string): { mode: number } | null;
         mkdirSync(path: string): void;
 }
@@ -170,7 +174,8 @@ export function loadLibrary(fs: LibraryAccess): LibraryFile {
 export function saveLibrary(fs: LibraryAccess, file: LibraryFile): boolean {
         try {
                 try { fs.mkdirSync('sdmc:/switch/burialnx'); } catch { /* may already exist */ }
-                fs.writeFileSync(LIBRARY_PATH, JSON.stringify(file, null, 2));
+                const data = JSON.stringify(file, null, 2);
+                if (!atomicWriteSyncIfSupported(fs, LIBRARY_PATH, data)) fs.writeFileSync(LIBRARY_PATH, data);
                 return true;
         } catch (error) { console.error(`Could not save library: ${String(error)}`); return false; }
 }

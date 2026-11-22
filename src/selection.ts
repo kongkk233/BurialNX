@@ -5,6 +5,7 @@ import { libraryIdFromRoot, loadLibrary, upsertGame, toSelection, entryFromSelec
 import { parseSelection, startupSelection, type GameSelection, type SaveLocation } from './settings';
 import { invalidateCoverCache } from './cover-cache';
 import { LIBRARY_PAGE_SIZE } from './render-library';
+import { atomicWriteSyncIfSupported } from './atomic-persistence';
 
 import { launch } from './game-launch';
 
@@ -22,7 +23,14 @@ export function validSaveLocation(location: SaveLocation, root: string, mod: str
 
 export function remember(selection: GameSelection) {
         if (!S.settingsValid) return false;
-        try { (Switch as any).writeFileSync(settingsPath, JSON.stringify(selection, null, 2)); S.saved = selection; return true; }
+        try {
+                const fs = Switch as any;
+                try { fs.mkdirSync?.('sdmc:/switch/burialnx'); } catch { /* may already exist */ }
+                const data = JSON.stringify(selection, null, 2);
+                if (!atomicWriteSyncIfSupported(fs, settingsPath, data)) fs.writeFileSync(settingsPath, data);
+                S.saved = selection;
+                return true;
+        }
         catch (error) { log(`Could not save selection: ${String(error)}`); return false; }
 }
 

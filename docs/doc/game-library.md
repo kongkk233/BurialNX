@@ -92,8 +92,10 @@ This module defines the persisted library of added games: the `LibraryEntry`/`Li
 ## `saveLibrary()` — JSDoc
 
 ```
-/** Write the library atomically. A failure (e.g. read-only SD) is reported
- * through the boolean return value; callers can surface it to the user. */
+/** Write the library with atomic replacement when Switch exposes writeFileSync +
+ * renameSync + remove/unlinkSync. If that complete primitive is unavailable,
+ * the compatibility fallback uses a direct write and does not claim crash
+ * durability; the boolean return still reports write failures. */
 ```
 
 ## `moveGame()` — JSDoc

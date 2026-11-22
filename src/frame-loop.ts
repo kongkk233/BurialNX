@@ -14,7 +14,7 @@ import { libraryTileCount, libraryNavigateRow } from './library-nav';
 import { loadEntryIntoState, startOrChooseSaves, chooseSaves, remember, rememberLibrary, setGameLanguage, getGameLanguage, validSaveLocation, currentSelection, setExperimentalSettings, setGameFps } from './selection';
 import { getAllPickKeys, findNearestKey } from './keymap-layout';
 import { openKeymapEditor, applyPreset, saveEditingKeymap, handleKeymapTouch, mergedKeymap } from './keymap-editor';
-import { menuButtonIndicesFor, faceButtonLetter, displayToButtonIndex } from './keymap';
+import { menuButtonIndicesFor, faceButtonLetter, setButton, setButtonWithLabel, displayToButtonIndex } from './keymap';
 import { suggestGameName, finishAddGame, startForwarderBuild } from './add-game';
 import { saveUserCoverLogged, deriveDefaultCover, coverPathFor } from './cover';
 import { invalidateCoverCache } from './cover-cache';
@@ -26,7 +26,6 @@ import { fail } from './error-handling';
 import { quitApp } from './game-lifecycle';
 import { launch } from './game-launch';
 import { importSteamSaves } from './saves';
-import { setButton, setButtonWithLabel, displayToButtonIndex } from './keymap';
 import { FolderBrowser } from './folders';
 import { handleWake, isLiveGameRunning, isInSaveLoadScene, handleWakeFromSaveLoad } from './sleep-recovery';
 import { detectWakeThisFrame } from './sleep-detect';
@@ -734,5 +733,3 @@ export function frame(now: number) {
         } catch (error) { fail(error); }
         requestAnimationFrame(frame);
 }
-
-import { setButton, setButtonWithLabel, displayToButtonIndex } from './keymap';

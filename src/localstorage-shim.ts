@@ -1,3 +1,5 @@
+import { atomicWriteSyncIfSupported } from './atomic-persistence';
+
 const STORAGE_PATH = 'sdmc:/switch/burialnx/localstorage.json';
 const STORAGE_DIR = 'sdmc:/switch/burialnx';
 
@@ -41,7 +43,8 @@ export function createStorageShim(): StorageShim {
       SwitchAny?.mkdirSync?.(STORAGE_DIR);
       const obj: Record<string, string> = {};
       for (const [k, v] of map) obj[k] = v;
-      SwitchAny?.writeFileSync?.(STORAGE_PATH, JSON.stringify(obj));
+      const data = JSON.stringify(obj);
+      if (!atomicWriteSyncIfSupported(SwitchAny, STORAGE_PATH, data)) SwitchAny?.writeFileSync?.(STORAGE_PATH, data);
     } catch {}
   };
 
