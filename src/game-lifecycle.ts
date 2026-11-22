@@ -1,6 +1,6 @@
 import { S } from './state';
 import { log } from './log';
-import { endGameSession } from './game-session';
+import { endGameSession, type GameSessionCleanupReport } from './game-session';
 import { resetDiagnostics } from './diagnostics';
 import { removeBeforeUnloadListener, removeAllSessionListeners } from './error-handling';
 import { BURIALNX_NRO_PATH, BURIALNX_DEBUG_NRO_PATH } from './forwarder';
@@ -12,7 +12,7 @@ export const realExit: ((() => void) | null) =
         typeof __SwitchGlobal?.exit === 'function' ? __SwitchGlobal.exit.bind(__SwitchGlobal) : null;
 
 /** Stop the running game and release audio, frame loop, image buffers, realm globals, then GC. */
-export function teardownGame() {
+export function teardownGame(): GameSessionCleanupReport | null {
         // Keep a reference to the old manager so it can be stubbed after the
         // session registry restores its original methods. A frame already
         // dequeued by nx.js may still call a bound method on this object.
@@ -29,8 +29,11 @@ export function teardownGame() {
         try { if (Array.isArray(S.runtime.Bitmap?._reuseImages)) S.runtime.Bitmap._reuseImages.length = 0; } catch { /* best-effort */ }
         S.gameStopped = true;
         // Restore session-owned patches and delete newly-created game globals
-        // before installing the final no-op manager barrier.
-        try { endGameSession(); } catch { /* best-effort */ }
+        // before installing the final no-op manager barrier. Return this report
+        // so sleep/exit callers can prove that production teardown, rather than
+        // a direct test-only endGameSession() call, actually performed cleanup.
+        let cleanup: GameSessionCleanupReport | null = null;
+        try { cleanup = endGameSession(); } catch { /* best-effort; report remains null */ }
         try {
                 const manager = retiredManager;
                 if (manager) {
@@ -59,6 +62,7 @@ export function teardownGame() {
                         if (after) log(`_teardown: heap ${(before.usedHeapSize / 1048576).toFixed(1)} MiB -> ${(after.usedHeapSize / 1048576).toFixed(1)} MiB, native malloc ${(after.mallocedMemory / 1048576).toFixed(1)} MiB`);
                 }
         } catch { /* best-effort */ }
+        return cleanup;
 }
 
 /** Remove the stale v0.1.6–0.1.8 .fwd-exit-flag marker file if present. */

@@ -76,6 +76,16 @@ test('generic package acceptance does not execute game scripts or require neutra
   assert.equal(result.runtimeBehavior, 'not-observed');
   assert.equal(result.checks.entryScript, 'validated-only');
   assert.equal(result.checks.sessionCleanup, 'pass');
+  assert.equal(result.checks.lifecycle, 'pass');
+  assert.deepEqual(result.evidence.lifecycle, {
+    status: 'pass',
+    scope: 'host-lifecycle-control-flow',
+    execution: 'synthetic-switch-control-flow',
+    wake: { gameLive: true, saveAttempted: true, saveSucceeded: true, markerAttempted: true, markerWritten: true, chainReload: 'launched' },
+    teardown: { hadSession: true, trackedTimeouts: 1, trackedIntervals: 1, timeoutCancelFailures: 0, intervalCancelFailures: 0, patchRestoreFailures: 0 },
+    switchHardware: 'not-verified',
+    externalRuntime: 'not-verified',
+  });
   assert.equal(result.checks.nodeCompat, 'pass');
   assert.deepEqual(result.evidence.nodeCompat, {
     status: 'pass',

@@ -189,6 +189,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       profile: hostAcceptance.checks.profile,
       packageAcceptance: packageAcceptance.status,
       packageRuntimeAcceptance: packageRuntimeAcceptance.status,
+      lifecycle: packageAcceptance.checks.lifecycle,
       nodeCompat: packageAcceptance.checks.nodeCompat,
       portCheck: hostAcceptance.checks.entry === 'pass' && hostAcceptance.checks.scriptGraph === 'pass' ? 'pass' : 'fail',
       acceptHost: hostAcceptance.status,

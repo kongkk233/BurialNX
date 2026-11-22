@@ -16,6 +16,7 @@ export async function loadBundledModule(relativeEntry) {
       format: 'esm',
       platform: 'node',
       target: 'es2022',
+      define: { __DEBUG__: 'false' },
       logLevel: 'silent',
     }).then(async (result) => {
       const source = result.outputFiles[0].text;

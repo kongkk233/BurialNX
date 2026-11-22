@@ -43,6 +43,8 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
   const mediaApi = await loadBundledModule('src/video-source.ts');
   const savesApi = await loadBundledModule('src/saves.ts');
   const sessions = await loadBundledModule('src/game-session.ts');
+  const lifecycleApi = await loadBundledModule('tools/lifecycle-evidence.ts');
+  const lifecycle = lifecycleApi.probeLifecycleEvidence();
   const nodeCompat = await nodeCompatEvidence();
 
   const entryBytes = await containedFile(port.roots[port.entry.root], port.entry.path, 'entry HTML', false);
@@ -140,6 +142,7 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
       saveContract: 'pass',
       rollback: 'pass',
       sessionCleanup: 'pass',
+      lifecycle: lifecycle.status,
       nodeCompat: nodeCompat.status,
     },
     evidence: {
@@ -150,6 +153,7 @@ export async function acceptPackage({ gameRoot = fixture, modRoot = null, profil
       save: { directory: port.contracts.save.directory, extension: port.contracts.save.extension, roundTrip: expectedPath },
       media: port.contracts.media,
       nodeCompat,
+      lifecycle,
       sessionCleanup: {
         trackedTimeouts: cleanup.trackedTimeouts,
         trackedIntervals: cleanup.trackedIntervals,

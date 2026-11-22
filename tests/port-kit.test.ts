@@ -4,7 +4,8 @@ import { defaultPortProfile, loadPortProfile, loadPortProfileFromRoots, loadPort
 import { PatchRegistry } from '../src/patch-registry';
 import { atomicWrite, atomicWriteSync, atomicWriteSyncIfSupported } from '../src/atomic-persistence';
 import { beginGameSession, currentGamePatches, endGameSession, patchSessionMethod, snapshotSessionObject } from '../src/game-session';
-import { installSleepAutoload } from '../src/sleep-recovery';
+import { teardownGame } from '../src/game-lifecycle';
+import { handleWake, getLastSleepRecoveryReport, installSleepAutoload, SLEEP_MARKER_PATH, SLEEP_SAVE_PATH } from '../src/sleep-recovery';
 import { S } from '../src/state';
 import { createMovieResolver } from '../src/video-source';
 import { gameAssetNames, gameAssets, unpackGameAsset } from '../src/game-assets';
@@ -178,6 +179,240 @@ test('sleep autoload hook is session-scoped and resets its pending state on tear
     else runtime.SceneManager = oldSceneManager;
     if (oldSceneBoot === undefined) delete runtime.Scene_Boot;
     else runtime.Scene_Boot = oldSceneBoot;
+  }
+});
+
+test('production teardown returns session cleanup evidence instead of discarding it', () => {
+  const oldRuntime = S.runtime;
+  const oldHost = S.host;
+  const oldMapPrefetch = S.mapPrefetch;
+  const oldGameStopped = S.gameStopped;
+  const manager: any = { _scene: { name: 'fixture' }, update() { return 'game'; }, updateMain() { return 'game'; } };
+  const disposed: string[] = [];
+  S.runtime = {
+    SceneManager: manager,
+    AudioManager: { stopBgm() {}, stopBgs() {}, stopMe() {}, stopSe() {} },
+    ImageManager: { _imageCache: { clear() {} }, _cache: { clear() {} }, clear() {} },
+  };
+  S.host = { dispose() { disposed.push('host'); } } as any;
+  S.mapPrefetch = { dispose() { disposed.push('prefetch'); } } as any;
+  beginGameSession();
+  const timeout = (globalThis as any).setTimeout(() => {}, 60_000);
+  const interval = (globalThis as any).setInterval(() => {}, 60_000);
+  timeout?.unref?.(); interval?.unref?.();
+  try {
+    const cleanup = teardownGame();
+    assert.ok(cleanup, 'production teardown returned a cleanup report');
+    assert.equal(cleanup!.hadSession, true);
+    assert.equal(cleanup!.trackedTimeouts, 1);
+    assert.equal(cleanup!.trackedIntervals, 1);
+    assert.equal(cleanup!.timeoutCancelFailures, 0);
+    assert.equal(cleanup!.intervalCancelFailures, 0);
+    assert.equal(cleanup!.patchRestoreFailures, 0);
+    assert.deepEqual(disposed, ['host', 'prefetch']);
+    assert.equal(manager._stopped, true);
+    assert.equal(manager._scene, null);
+    assert.equal(S.host, undefined);
+    assert.equal(S.mapPrefetch, undefined);
+  } finally {
+    if (currentGamePatches()) endGameSession();
+    S.runtime = oldRuntime;
+    S.host = oldHost;
+    S.mapPrefetch = oldMapPrefetch;
+    S.gameStopped = oldGameStopped;
+  }
+});
+
+test('sleep wake report links autosave, marker, production teardown, and chain reload', () => {
+  const g = globalThis as any;
+  const hadSwitch = Object.prototype.hasOwnProperty.call(g, 'Switch');
+  const oldSwitch = g.Switch;
+  const oldRuntime = S.runtime;
+  const oldHost = S.host;
+  const oldMapPrefetch = S.mapPrefetch;
+  const oldSelectedGame = S.selectedGame;
+  const oldCurrentEntry = S.currentEntry;
+  const oldPhase = S.phase;
+  const oldAllowExit = S.allowExit;
+  const oldGameStopped = S.gameStopped;
+  const files = new Map<string, ArrayBuffer>();
+  const launches: string[] = [];
+  const encode = (value: string | ArrayBuffer) => typeof value === 'string' ? new TextEncoder().encode(value).buffer : value;
+  class Application {
+    constructor(public path: string) {}
+    launch(path: string) { launches.push(path); }
+  }
+  const sw: any = {
+    argv: ['sdmc:/switch/burialnx/burialnx.nro'],
+    Application,
+    mkdirSync() {},
+    writeFileSync(path: string, value: string | ArrayBuffer) { files.set(path, encode(value)); },
+    readFileSync(path: string) { return files.get(path) ?? null; },
+    removeSync(path: string) { files.delete(path); },
+    unlinkSync(path: string) { files.delete(path); },
+  };
+  const manager: any = { _scene: { name: 'map' }, update() {}, updateMain() {}, requestUpdate() {} };
+  g.Switch = sw;
+  S.runtime = {
+    SceneManager: manager,
+    AudioManager: {
+      saveBgm: () => ({ name: 'theme', volume: 90, pitch: 100, pos: 12 }),
+      saveBgs: () => ({ name: 'rain', volume: 70, pitch: 100, pos: 3 }),
+      stopBgm() {}, stopBgs() {}, stopMe() {}, stopSe() {},
+    },
+    DataManager: { makeSaveContents: () => ({ mapId: 7, party: ['hero'] }) },
+    JsonEx: { stringify: (value: unknown) => JSON.stringify(value), parse: (value: string) => JSON.parse(value) },
+    LZString: { compressToBase64: (value: string) => value, decompressFromBase64: (value: string) => value },
+    ImageManager: { _imageCache: { clear() {} }, _cache: { clear() {} }, clear() {} },
+    $gameSystem: { saveBgm() {}, saveBgs() {} },
+  };
+  S.host = { dispose() {} } as any;
+  S.mapPrefetch = { dispose() {} } as any;
+  S.selectedGame = 'sdmc:/switch/burialnx/Games/Fixture/www';
+  S.currentEntry = { id: 'fixture', name: 'Fixture', root: S.selectedGame, sharedSaves: false };
+  S.phase = 'game';
+  S.allowExit = false;
+  S.gameStopped = false;
+  beginGameSession();
+  const timeout = (globalThis as any).setTimeout(() => {}, 60_000);
+  const interval = (globalThis as any).setInterval(() => {}, 60_000);
+  timeout?.unref?.(); interval?.unref?.();
+  try {
+    const report = handleWake(true);
+    assert.equal(report.schema, 1);
+    assert.equal(report.gameLive, true);
+    assert.equal(report.saveAttempted, true);
+    assert.equal(report.saveSucceeded, true);
+    assert.equal(report.markerAttempted, true);
+    assert.equal(report.markerWritten, true);
+    assert.equal(report.chainReload, 'launched');
+    assert.ok(report.teardown, 'wake path returned production teardown evidence');
+    assert.equal(report.teardown!.hadSession, true);
+    assert.equal(report.teardown!.trackedTimeouts, 1);
+    assert.equal(report.teardown!.trackedIntervals, 1);
+    assert.equal(report.teardown!.timeoutCancelFailures, 0);
+    assert.equal(report.teardown!.intervalCancelFailures, 0);
+    assert.equal(files.has(SLEEP_SAVE_PATH), true);
+    assert.equal(files.has(SLEEP_MARKER_PATH), true);
+    assert.deepEqual(launches, ['sdmc:/switch/burialnx/burialnx.nro']);
+    assert.deepEqual(getLastSleepRecoveryReport(), report);
+  } finally {
+    if (currentGamePatches()) endGameSession();
+    S.runtime = oldRuntime;
+    S.host = oldHost;
+    S.mapPrefetch = oldMapPrefetch;
+    S.selectedGame = oldSelectedGame;
+    S.currentEntry = oldCurrentEntry;
+    S.phase = oldPhase;
+    S.allowExit = oldAllowExit;
+    S.gameStopped = oldGameStopped;
+    if (hadSwitch) g.Switch = oldSwitch; else delete g.Switch;
+  }
+});
+
+test('sleep wake failure paths preserve cleanup and fail closed to exit', () => {
+  const g = globalThis as any;
+  const hadSwitch = Object.prototype.hasOwnProperty.call(g, 'Switch');
+  const oldSwitch = g.Switch;
+  const oldRuntime = S.runtime;
+  const oldPhase = S.phase;
+  const oldAllowExit = S.allowExit;
+  const exits: number[] = [];
+  g.Switch = {
+    argv: ['sdmc:/switch/burialnx/burialnx.nro'],
+    Application: class {
+      constructor() { throw new Error('chain launch unavailable'); }
+    },
+    exit(code = 0) { exits.push(code); },
+  };
+  S.runtime = {};
+  S.phase = 'game';
+  S.allowExit = false;
+  try {
+    const report = handleWake(false);
+    assert.equal(report.gameLive, false);
+    assert.equal(report.saveAttempted, false);
+    assert.equal(report.markerWritten, false);
+    assert.equal(report.chainReload, 'fallback-exit');
+    assert.deepEqual(exits, [0]);
+  } finally {
+    S.runtime = oldRuntime;
+    S.phase = oldPhase;
+    S.allowExit = oldAllowExit;
+    if (hadSwitch) g.Switch = oldSwitch; else delete g.Switch;
+  }
+});
+
+test('sleep wake marker failure still tears down before reloading', () => {
+  const g = globalThis as any;
+  const hadSwitch = Object.prototype.hasOwnProperty.call(g, 'Switch');
+  const oldSwitch = g.Switch;
+  const oldRuntime = S.runtime;
+  const oldHost = S.host;
+  const oldMapPrefetch = S.mapPrefetch;
+  const oldSelectedGame = S.selectedGame;
+  const oldCurrentEntry = S.currentEntry;
+  const oldPhase = S.phase;
+  const oldAllowExit = S.allowExit;
+  const oldGameStopped = S.gameStopped;
+  const files = new Map<string, ArrayBuffer>();
+  const launches: string[] = [];
+  const encode = (value: string | ArrayBuffer) => typeof value === 'string' ? new TextEncoder().encode(value).buffer : value;
+  class Application {
+    constructor(public path: string) {}
+    launch(path: string) { launches.push(path); }
+  }
+  g.Switch = {
+    argv: ['sdmc:/switch/burialnx/burialnx.nro'], Application,
+    mkdirSync() {},
+    writeFileSync(path: string, value: string | ArrayBuffer) {
+      if (path === SLEEP_MARKER_PATH) throw new Error('marker full');
+      files.set(path, encode(value));
+    },
+    readFileSync(path: string) { return files.get(path) ?? null; },
+    removeSync(path: string) { files.delete(path); },
+    unlinkSync(path: string) { files.delete(path); },
+  };
+  const manager: any = { _scene: { name: 'map' }, update() {}, updateMain() {} };
+  S.runtime = {
+    SceneManager: manager,
+    AudioManager: { saveBgm: () => null, saveBgs: () => null, stopBgm() {}, stopBgs() {}, stopMe() {}, stopSe() {} },
+    DataManager: { makeSaveContents: () => ({ mapId: 1 }) },
+    JsonEx: { stringify: (value: unknown) => JSON.stringify(value) },
+    LZString: { compressToBase64: (value: string) => value },
+    ImageManager: { _imageCache: { clear() {} }, _cache: { clear() {} }, clear() {} },
+  };
+  S.host = { dispose() {} } as any;
+  S.mapPrefetch = { dispose() {} } as any;
+  S.selectedGame = 'sdmc:/switch/burialnx/Games/Fixture/www';
+  S.currentEntry = { id: 'fixture', name: 'Fixture', root: S.selectedGame, sharedSaves: false };
+  S.phase = 'game';
+  S.allowExit = false;
+  S.gameStopped = false;
+  beginGameSession();
+  try {
+    const report = handleWake(true);
+    assert.equal(report.saveSucceeded, true);
+    assert.equal(report.markerAttempted, true);
+    assert.equal(report.markerWritten, false);
+    assert.equal(report.chainReload, 'launched');
+    assert.ok(report.teardown);
+    assert.equal(report.teardown!.hadSession, true);
+    assert.equal(report.teardown!.timeoutCancelFailures, 0);
+    assert.equal(files.has(SLEEP_SAVE_PATH), true);
+    assert.equal(files.has(SLEEP_MARKER_PATH), false);
+    assert.deepEqual(launches, ['sdmc:/switch/burialnx/burialnx.nro']);
+  } finally {
+    if (currentGamePatches()) endGameSession();
+    S.runtime = oldRuntime;
+    S.host = oldHost;
+    S.mapPrefetch = oldMapPrefetch;
+    S.selectedGame = oldSelectedGame;
+    S.currentEntry = oldCurrentEntry;
+    S.phase = oldPhase;
+    S.allowExit = oldAllowExit;
+    S.gameStopped = oldGameStopped;
+    if (hadSwitch) g.Switch = oldSwitch; else delete g.Switch;
   }
 });
 

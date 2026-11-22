@@ -52,6 +52,10 @@ This module is the self-contained wake-detection + hidden-file autosave + fresh-
 > matches, load fails, hidden file missing), the loader falls back to the
 > library grid (or the forwarder's normal auto-launch → title screen).
 
+## Machine-readable recovery evidence
+
+`handleWake(gameLive)` returns a `SleepRecoveryReport` and keeps the latest report available through `getLastSleepRecoveryReport()`. The report records whether autosave was attempted and succeeded, whether the marker write was attempted and succeeded, the cleanup report returned by the production `teardownGame()`, and whether chain reload launched, fell back to `Switch.exit()`, or failed. A marker-write failure does not skip teardown; a chain-launch failure fails closed to `Switch.exit()` when available. `accept:package` exercises this production control flow with a synthetic Switch API and records it as `scope: host-lifecycle-control-flow`, `execution: synthetic-switch-control-flow`. This is host control-flow evidence only — it is not proof of a physical sleep/wake event, nx.js GPU recovery, or Switch hardware behavior.
+
 ## Module-level rationale — WHY A HIDDEN FILE (not a save slot)
 
 > An earlier version used slot 99 (above RPG Maker MV's default maxSavefiles

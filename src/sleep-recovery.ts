@@ -9,6 +9,31 @@ export const SLEEP_SAVE_PATH = 'sdmc:/switch/burialnx/.sleep-autosave.rpgsave';
 export const SLEEP_MARKER_PATH = 'sdmc:/switch/burialnx/.sleep-autoload';
 export const SLEEP_MARKER_TTL_MS = 120_000;
 
+export type SleepChainOutcome = 'not-attempted' | 'launched' | 'fallback-exit' | 'failed';
+
+/** Machine-readable host control-flow evidence for one sleep→wake recovery attempt. */
+export interface SleepRecoveryReport {
+        schema: 1;
+        gameLive: boolean;
+        saveAttempted: boolean;
+        saveSucceeded: boolean;
+        markerAttempted: boolean;
+        markerWritten: boolean;
+        teardown: ReturnType<typeof teardownGame>;
+        chainReload: SleepChainOutcome;
+}
+
+let lastSleepRecoveryReport: SleepRecoveryReport | null = null;
+
+/** Return the most recent recovery report without exposing mutable nested state. */
+export function getLastSleepRecoveryReport(): SleepRecoveryReport | null {
+        if (!lastSleepRecoveryReport) return null;
+        return {
+                ...lastSleepRecoveryReport,
+                teardown: lastSleepRecoveryReport.teardown ? { ...lastSleepRecoveryReport.teardown } : null,
+        };
+}
+
 /** Save the live game's state to the hidden sleep-autosave file. */
 export function saveGameForSleep(): boolean {
         const runtime = S.runtime as any;
@@ -75,7 +100,7 @@ function captureAudioState(): { bgm: any | null; bgs: any | null } {
 }
 
 /** Write the sleep-autoload marker; records gameId + captured BGM/BGS. */
-export function writeSleepMarker(gameId: string, audio: { bgm: any | null; bgs: any | null }): void {
+export function writeSleepMarker(gameId: string, audio: { bgm: any | null; bgs: any | null }): boolean {
         const payload = JSON.stringify({
                 gameId,
                 savedAt: Date.now(),
@@ -87,8 +112,10 @@ export function writeSleepMarker(gameId: string, audio: { bgm: any | null; bgs: 
                 try { SwitchAny?.mkdirSync?.('sdmc:/switch/burialnx'); } catch { /* already exists */ }
                 SwitchAny.writeFileSync(SLEEP_MARKER_PATH, payload);
                 log(`_sleep: marker written (${SLEEP_MARKER_PATH}, gameId=${gameId}, bgm=${audio.bgm?.name || 'none'}, bgs=${audio.bgs?.name || 'none'})`);
+                return true;
         } catch (error) {
                 log(`_sleep: marker write failed: ${error instanceof Error ? error.message : String(error)}`);
+                return false;
         }
 }
 
@@ -215,21 +242,33 @@ export function currentGameIdForSleep(): string | null {
 }
 
 /** Full wake handler: save → marker → teardown → chain-reload sequence. */
-export function handleWake(gameLive: boolean): void {
+export function handleWake(gameLive: boolean): SleepRecoveryReport {
+        const report: SleepRecoveryReport = {
+                schema: 1,
+                gameLive,
+                saveAttempted: false,
+                saveSucceeded: false,
+                markerAttempted: false,
+                markerWritten: false,
+                teardown: null,
+                chainReload: 'not-attempted',
+        };
         log(`_sleep: wake detected (phase=${S.phase}, gameLive=${gameLive}) — reloading`);
         if (gameLive) {
                 let audio = { bgm: null as any | null, bgs: null as any | null };
                 try { audio = captureAudioState(); }
                 catch (e) { log(`_sleep: captureAudioState threw: ${e instanceof Error ? e.message : String(e)}`); }
-                let savedSlot = false;
-                try { savedSlot = saveGameForSleep(); }
+                report.saveAttempted = true;
+                try { report.saveSucceeded = saveGameForSleep(); }
                 catch (e) { log(`_sleep: saveGameForSleep threw: ${e instanceof Error ? e.message : String(e)}`); }
-                if (savedSlot) {
+                if (report.saveSucceeded) {
                         const gameId = currentGameIdForSleep();
-                        if (gameId) writeSleepMarker(gameId, audio);
-                        else log('_sleep: no game id available — marker skipped (fresh process will not autoload)');
+                        if (gameId) {
+                                report.markerAttempted = true;
+                                report.markerWritten = writeSleepMarker(gameId, audio);
+                        } else log('_sleep: no game id available — marker skipped (fresh process will not autoload)');
                 }
-                try { teardownGame(); }
+                try { report.teardown = teardownGame(); }
                 catch (e) { log(`_sleep: teardown threw: ${e instanceof Error ? e.message : String(e)}`); }
         } else {
                 log('_sleep: no live game — skipping autosave, just refreshing GPU surface');
@@ -237,13 +276,20 @@ export function handleWake(gameLive: boolean): void {
         try { removeBeforeUnloadListener(); } catch { /* best-effort */ }
         try {
                 chainReloadSelf();
+                report.chainReload = 'launched';
         } catch (e) {
                 log(`_sleep: chainReloadSelf failed: ${e instanceof Error ? e.message : String(e)} — falling back to Switch.exit()`);
                 try {
                         const realExit = (Switch as any).exit;
-                        if (typeof realExit === 'function') { S.allowExit = true; realExit.call(Switch); }
-                } catch { /* best-effort */ }
+                        if (typeof realExit === 'function') {
+                                S.allowExit = true;
+                                realExit.call(Switch);
+                                report.chainReload = 'fallback-exit';
+                        } else report.chainReload = 'failed';
+                } catch { report.chainReload = 'failed'; }
         }
+        lastSleepRecoveryReport = report;
+        return getLastSleepRecoveryReport()!;
 }
 
 /** Install a one-shot Game_Map.autoplay hook to replay saved BGM/BGS. */
