@@ -122,7 +122,12 @@ export async function checkPort(options) {
       media: { status: 'pass', extensionFallback: profile.media.extensionFallback, variantFallback: profile.media.variantFallback },
       save: { status: 'pass', directory: profile.save.directory, extension: profile.save.extension },
       entryScript: { status: profile.entry.script ? 'pass' : 'not-declared', path: profile.entry.script ?? null },
-      metadataOnly: ['runtime.version', 'compat.mv', 'compat.nwjs', 'package.name', 'package.version'],
+      classification: {
+        enforced: ['entry.html', 'scriptGraph', 'asset.pathSafety', 'media.policy', 'save.contract'],
+        validatedOnly: ['entry.script'],
+        metadataOnly: ['runtime.version', 'compat.mv', 'compat.nwjs', 'package.name', 'package.version'],
+        notObserved: ['targetGameRuntime', 'nativeDecoder', 'switchHardware'],
+      },
     },
   };
   if (options.manifest) {

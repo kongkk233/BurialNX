@@ -5,14 +5,14 @@
 Validation levels:
 
 - **Package acceptance**: `npm run accept:package` checks a profile, entry, ordered script graph, safe asset paths, media policy shape, dynamic save naming, and session rollback without executing game scripts. It uses only the synthetic `tests/fixtures/generic-mv` fixture and reports `executedGameScripts: false` / `runtimeBehavior: not-observed`.
-- **Port contract**: `npm run profile:validate` and `npm run port:check`; this is structural and profile-driven.
+- **Port contract**: `npm run profile:validate` and `npm run port:check`; this is structural and profile-driven. The checker labels `entry.html`, the ordered script graph, path safety, media policy, and save contract as `enforced`; `entry.script` as `validated-only`; runtime/compat/package declarations as `metadata-only`; and target runtime/native/hardware behavior as `not-observed`.
 - **Neutral deep acceptance**: `npm run accept:host`, `npm run accept:overlay`, and `npm run smoke:neutral`; these intentionally exercise the repository's neutral fixture and remain separate from generic package acceptance.
 - **Host**: `npm test`; no real game directory and no hardware.
 - **Runtime provenance**: `npm run verify:runtime-provenance` recomputes tracked patch and preroll-runtime blob hashes. The report marks external nx.js source, SDK/toolchain, signing, and standalone-artifact claims as `not-verified`; this is not a complete native source rebuild.
 - **Build/typecheck**: reproducible dependency install with `npm ci`, NRO packaging, and production graph resolution. The manual GitHub release workflow uses pinned action commits and refuses to build unless the requested version tag resolves to the checked-out commit.
 - **Smoke**: `npm run smoke:neutral` checks the repository fixture through the explicit `neutral-port-contract` mode; a permitted full MV directory uses `BURIALNX_GAME_ROOT=<www> npm run smoke` and the development-only simulated-frame harness. The release manifest does not infer full-game smoke or hardware results.
-- **Browser**: optional `npm run test:movie:browser`; requires browser/media support.
-- **Native**: optional `npm run test:movie:native`; requires native fixtures/toolchain.
+- **Browser**: `npm run test:movie:browser` runs as a required separate CI job with Chromium and samples real decoded pixels/PCM for the synthetic MP4/WebM fixtures. A local release manifest remains host-only unless this probe is run separately; browser evidence is not hardware evidence.
+- **Native**: optional `npm run test:movie:native`; requires native fixtures/toolchain and an external patched nx.js source tree.
 - **Hardware**: physical Switch playback and operator evidence. It is not inferred from a passing host test or NRO build, and the manifest remains `not verified` unless explicitly observed.
 
 A release package must include the generated NRO and manifest. NACP metadata comes from the package manifest used by the build; it is not a claim that a target game was tested.

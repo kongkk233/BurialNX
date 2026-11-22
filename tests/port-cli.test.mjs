@@ -19,6 +19,12 @@ test('port checker validates the neutral fixture and records ordered scripts', a
   assert.equal(result.profile.id, 'neutral-mv');
   assert.deepEqual(result.scriptGraph.paths, ['js/rpg_core.js', 'js/main.js']);
   assert.equal(result.contracts.entryScript.status, 'pass');
+  assert.deepEqual(result.contracts.classification, {
+    enforced: ['entry.html', 'scriptGraph', 'asset.pathSafety', 'media.policy', 'save.contract'],
+    validatedOnly: ['entry.script'],
+    metadataOnly: ['runtime.version', 'compat.mv', 'compat.nwjs', 'package.name', 'package.version'],
+    notObserved: ['targetGameRuntime', 'nativeDecoder', 'switchHardware'],
+  });
 });
 
 test('generic package acceptance does not execute game scripts or require neutral markers', async () => {

@@ -92,7 +92,9 @@ Options are fully translated — Always Dash, BGM/SFX Volume, On/Off — using t
 
 `npm run accept:host` and `npm run accept:overlay` are separate neutral-fixture deep acceptance checks. They exercise the repository's synthetic neutral runtime contract and are not evidence that a commercial game, native decoder, or Switch hardware has been tested.
 
-`npm run verify:runtime-provenance` recomputes the tracked patch and preroll-runtime blob hashes recorded in `runtime/manifest.json`. Its explicit `not-verified` entries cover external nx.js source, SDK/toolchain, signing, and standalone-artifact claims that are recorded but not reconstructed by this host-only repository.
+`npm run verify:runtime-provenance` recomputes the tracked patch and preroll-runtime blob hashes recorded in `runtime/manifest.json`. Its explicit `not-verified` entries cover external nx.js source, SDK/toolchain, signing, and standalone-artifact claims that are recorded but not reconstructed by this host-only repository. The `port:check` report distinguishes enforced contracts, validated-only declarations, metadata-only fields, and behavior not observed by host checks.
+
+The desktop `test:movie:browser` probe is a required separate CI job: it uses Chromium to sample decoded pixels and PCM from synthetic MP4/WebM fixtures. This does not imply native Switch or hardware playback.
 
 ## 🧰 Port Kit commands
 
