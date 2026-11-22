@@ -11,6 +11,7 @@ import { acceptPackageRuntime } from './accept-package-runtime.mjs';
 import { validateExternalRuntimeReport } from './accept-external-runtime.mjs';
 import { verifyRuntimeProvenance } from './verify-runtime-provenance.mjs';
 import { BROWSER_REPORT_PATH, readBrowserValidationReport } from './browser-report.mjs';
+import { acceptPackagedArtifactSet, validatePackagedAcceptance } from './accept-packaged-nro.mjs';
 
 const ASSET_HEADER_SIZE = 0x38;
 const NACP_TITLE_SIZE = 0x200;
@@ -278,6 +279,11 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   } else if (requireDebugArtifact) {
     throw new Error('release artifact set requires burialnx-debug.nro');
   }
+  const packagedAcceptance = await acceptPackagedArtifactSet({
+    release: { path: releasePath, kind: 'release', buffer, expectedArtifact: releaseArtifact },
+    debug: debugBuffer ? { path: 'burialnx-debug.nro', kind: 'debug', buffer: debugBuffer, expectedArtifact: debugArtifact } : null,
+    requireDebugArtifact,
+  });
   const neutralFixture = resolve(project, 'tests/fixtures/neutral-mv/www');
   const modFixture = resolve(project, 'tests/fixtures/neutral-mv/mod');
   const packageFixture = resolve(project, 'tests/fixtures/generic-mv/www');
@@ -301,8 +307,9 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   };
   if (debugArtifact) artifacts.debugNro = debugArtifact;
   validateArtifactSet(artifacts, { requireDebugArtifact, label: 'release artifact set' });
+  validatePackagedAcceptance(packagedAcceptance, { artifacts, requireDebugArtifact });
   const manifest = {
-    schema: 4,
+    schema: 5,
     package: { name: packageJson.name, version: packageJson.version },
     gitCommit,
     gitDirty: gitStatus.length > 0,
@@ -317,6 +324,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       debugRequired: requireDebugArtifact,
       artifacts: debugArtifact ? ['nro', 'debugNro'] : ['nro'],
     },
+    packagedAcceptance,
     artifacts,
     nacp,
     packageAcceptance: {
@@ -364,6 +372,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       native: nativeRebuild.status === 'pass' ? 'source-to-runtime: pass' : nativeRebuild.status === 'mismatch' ? 'not verified (executable digest mismatch)' : 'not run',
       externalRuntime: externalRuntime.status === 'pass' ? 'external-runtime-identity: pass' : 'not run',
       artifacts: 'release-artifact-set: pass',
+      packaged: 'packaged-nro: pass',
       hardware: runtimeManifest.hardwarePlaybackObserved === true ? 'observed in runtime manifest' : 'not verified',
     },
   };

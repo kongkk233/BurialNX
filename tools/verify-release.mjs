@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { externalRuntimeNotRunReport, generateManifest, inspectNro, validateArtifactSet } from './release-manifest.mjs';
 import { validateExternalRuntimeReport } from './accept-external-runtime.mjs';
 import { validateBrowserReport } from './browser-report.mjs';
+import { validatePackagedAcceptance } from './accept-packaged-nro.mjs';
 
 const project = resolve('.');
 const manifestPath = resolve(project, 'release-manifest.json');
@@ -98,6 +99,8 @@ const actual = await generateManifest('burialnx.nro', { project, write: false, r
 const stored = JSON.parse(await readFile(manifestPath, 'utf8'));
 validateArtifactSet(actual.artifacts, { requireDebugArtifact, label: 'actual release artifact set' });
 validateArtifactSet(stored.artifacts, { requireDebugArtifact, label: 'stored release artifact set' });
+validatePackagedAcceptance(actual.packagedAcceptance, { artifacts: actual.artifacts, requireDebugArtifact, label: 'actual packaged NRO acceptance' });
+validatePackagedAcceptance(stored.packagedAcceptance, { artifacts: stored.artifacts, requireDebugArtifact, label: 'stored packaged NRO acceptance' });
 
 if (stored.schema !== actual.schema) throw new Error(`release manifest schema mismatch: ${stored.schema} != ${actual.schema}`);
 if (stored.package?.name !== actual.package.name || stored.package?.version !== actual.package.version) throw new Error('release manifest package metadata is stale');
@@ -108,6 +111,7 @@ if (stored.sourceTreeSha256 !== actual.sourceTreeSha256) throw new Error('releas
 if (stored.toolchain?.lockfileSha256 !== actual.toolchain.lockfileSha256) throw new Error('release manifest lockfile hash is stale');
 if (JSON.stringify(stored.artifactSet) !== JSON.stringify(actual.artifactSet)) throw new Error('release manifest artifact-set descriptor is stale');
 if (JSON.stringify(stored.artifacts) !== JSON.stringify(actual.artifacts)) throw new Error('release manifest artifact set is stale');
+if (JSON.stringify(stored.packagedAcceptance) !== JSON.stringify(actual.packagedAcceptance)) throw new Error('release manifest packaged NRO acceptance is stale');
 if (JSON.stringify(stored.runtimeProvenance) !== JSON.stringify(actual.runtimeProvenance)) throw new Error('release manifest runtime provenance is stale');
 if (actual.runtimeProvenance.status !== 'pass' || actual.runtimeProvenance.verified.some((claim) => claim.status !== 'pass')) throw new Error('runtime provenance gate did not pass');
 if (actual.runtimeProvenance.unverified.some((claim) => claim.status !== 'not-verified')) throw new Error('runtime provenance boundary is not explicit');
@@ -159,7 +163,8 @@ if (!Array.isArray(actual.reproducibility.builds) || actual.reproducibility.buil
 if (actual.externalRuntime.status === 'not-run' && actual.validation.externalRuntime !== 'not run') throw new Error('missing external runtime report was not represented as not run');
 if (actual.externalRuntime.status === 'pass' && actual.validation.externalRuntime !== 'external-runtime-identity: pass') throw new Error('external runtime identity pass was not represented explicitly');
 if (stored.validation?.artifacts !== 'release-artifact-set: pass' || actual.validation?.artifacts !== 'release-artifact-set: pass') throw new Error('release artifact-set validation did not pass');
-for (const key of ['profile', 'packageAcceptance', 'packageRuntimeAcceptance', 'lifecycle', 'nodeCompat', 'portCheck', 'acceptHost', 'overlayAcceptance', 'reproducibility', 'runtimeProvenance', 'npmTest', 'typecheck', 'structural', 'runtime', 'smoke', 'browser', 'native', 'externalRuntime', 'artifacts', 'hardware']) {
+if (stored.validation?.packaged !== 'packaged-nro: pass' || actual.validation?.packaged !== 'packaged-nro: pass') throw new Error('packaged NRO validation did not pass');
+for (const key of ['profile', 'packageAcceptance', 'packageRuntimeAcceptance', 'lifecycle', 'nodeCompat', 'portCheck', 'acceptHost', 'overlayAcceptance', 'reproducibility', 'runtimeProvenance', 'npmTest', 'typecheck', 'structural', 'runtime', 'smoke', 'browser', 'native', 'externalRuntime', 'artifacts', 'packaged', 'hardware']) {
   if (stored.validation?.[key] !== actual.validation?.[key]) throw new Error(`release manifest validation.${key} is stale`);
 }
 inspectNro(await readFile(resolve(project, 'burialnx.nro')));

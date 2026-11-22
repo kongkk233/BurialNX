@@ -14,6 +14,7 @@
     "accept:package": "node tools/accept-package.mjs",
     "accept:package:runtime": "node tools/accept-package-runtime.mjs",
     "accept:external-runtime": "node tools/accept-external-runtime.mjs",
+    "accept:packaged": "node tools/accept-packaged-nro.mjs",
     "accept:host": "node tools/accept-host.mjs",
     "accept:overlay": "node tools/accept-host.mjs --game-root tests/fixtures/neutral-mv/www --mod-root tests/fixtures/neutral-mv/mod",
     "verify:runtime-provenance": "node tools/verify-runtime-provenance.mjs",
@@ -32,6 +33,8 @@
   },
   "devDependencies": {
     "@nx.js/nro": "1.0.0-beta.7",
+    "@tootallnate/nro": "^0.1.3",
+    "@tootallnate/romfs": "^0.1.1",
     "@types/node": "22.15.21",
     "ajv": "8.20.0",
     "esbuild": "0.25.12",
