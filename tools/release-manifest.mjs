@@ -125,6 +125,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       status: hostAcceptance.status,
       environment: hostAcceptance.environment,
       checks: hostAcceptance.checks,
+      evidence: hostAcceptance.evidence,
       fixture: relative(project, resolve(project, 'tests/fixtures/neutral-mv/www')),
     },
     neutralSmoke,

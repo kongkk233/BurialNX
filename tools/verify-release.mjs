@@ -23,9 +23,13 @@ if (JSON.stringify(stored.hostAcceptance) !== JSON.stringify(actual.hostAcceptan
 if (JSON.stringify(stored.neutralSmoke) !== JSON.stringify(actual.neutralSmoke)) throw new Error('release manifest neutral smoke is stale');
 if (actual.neutralSmoke.status !== 'pass' || actual.neutralSmoke.smokeMode !== 'neutral-port-contract') throw new Error('neutral smoke gate did not pass');
 if (actual.neutralSmoke.gitCommit !== actual.gitCommit || actual.neutralSmoke.gitDirty !== false) throw new Error('neutral smoke provenance does not match the clean release commit');
+if (actual.neutralSmoke.fixture !== 'tests/fixtures/neutral-mv/www') throw new Error('neutral smoke fixture is not the repository fixture');
+if (JSON.stringify(actual.neutralSmoke.checks) !== JSON.stringify(actual.hostAcceptance.checks)) throw new Error('neutral smoke checks do not match fresh host acceptance');
+if (JSON.stringify(actual.neutralSmoke.evidence) !== JSON.stringify(actual.hostAcceptance.evidence)) throw new Error('neutral smoke evidence does not match fresh host acceptance');
 if (JSON.stringify(stored.reproducibility) !== JSON.stringify(actual.reproducibility)) throw new Error('release manifest reproducibility is stale');
 if (actual.reproducibility.status !== 'pass' || actual.reproducibility.byteIdentical !== true) throw new Error('release reproducibility gate did not pass');
 if (actual.reproducibility.gitCommit !== actual.gitCommit || actual.reproducibility.gitDirty !== false) throw new Error('reproducibility provenance does not match the clean release commit');
+if (!Array.isArray(actual.reproducibility.builds) || actual.reproducibility.builds.length !== 2 || actual.reproducibility.builds.some((build) => build.sha256 !== actual.artifacts.nro.sha256 || build.bytes !== actual.artifacts.nro.bytes)) throw new Error('reproducibility report does not describe the release NRO twice');
 for (const key of ['profile', 'portCheck', 'acceptHost', 'reproducibility', 'npmTest', 'typecheck', 'structural', 'runtime', 'smoke', 'browser', 'native', 'hardware']) {
   if (stored.validation?.[key] !== actual.validation?.[key]) throw new Error(`release manifest validation.${key} is stale`);
 }
