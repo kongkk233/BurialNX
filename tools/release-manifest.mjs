@@ -5,6 +5,7 @@ import { resolve, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { checkVideoRuntime, pinnedCode } from './check-video-runtime.mjs';
 import { acceptHost } from './accept-host.mjs';
+import { acceptPackage } from './accept-package.mjs';
 
 const ASSET_HEADER_SIZE = 0x38;
 const NACP_TITLE_SIZE = 0x200;
@@ -101,6 +102,8 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
   const nacp = nacpSummary(buffer, layout);
   const neutralFixture = resolve(project, 'tests/fixtures/neutral-mv/www');
   const modFixture = resolve(project, 'tests/fixtures/neutral-mv/mod');
+  const packageFixture = resolve(project, 'tests/fixtures/generic-mv/www');
+  const packageAcceptance = await acceptPackage({ gameRoot: packageFixture });
   const hostAcceptance = await acceptHost({ gameRoot: neutralFixture });
   const overlayAcceptance = await acceptHost({ gameRoot: neutralFixture, modRoot: modFixture });
   const neutralSmoke = await neutralSmokeReport(project);
@@ -124,6 +127,10 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       runtimeExecutable: { sha256: digest(buffer.subarray(0, layout.nroSize)), expectedSha256: pinnedCode, source: 'computed from final NRO executable section' },
     },
     nacp,
+    packageAcceptance: {
+      ...packageAcceptance,
+      fixture: relative(project, packageFixture),
+    },
     hostAcceptance: {
       status: hostAcceptance.status,
       environment: hostAcceptance.environment,
@@ -145,6 +152,7 @@ export async function generateManifest(nroPath = 'burialnx.nro', { project = res
       structural: 'pass',
       runtime: 'pass',
       profile: hostAcceptance.checks.profile,
+      packageAcceptance: packageAcceptance.status,
       portCheck: hostAcceptance.checks.entry === 'pass' && hostAcceptance.checks.scriptGraph === 'pass' ? 'pass' : 'fail',
       acceptHost: hostAcceptance.status,
       overlayAcceptance: overlayAcceptance.status,

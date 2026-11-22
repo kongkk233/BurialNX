@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { resolve } from 'node:path';
 import { acceptHost } from '../tools/accept-host.mjs';
+import { acceptPackage } from '../tools/accept-package.mjs';
 import { validateProfileFile } from '../tools/validate-profile.mjs';
 import { checkPort, safeRelative } from '../tools/check-port.mjs';
 import { profileApi } from '../tools/validate-profile.mjs';
 
 const fixture = resolve('tests/fixtures/neutral-mv/www');
 const modFixture = resolve('tests/fixtures/neutral-mv/mod');
+const genericFixture = resolve('tests/fixtures/generic-mv/www');
 
 test('port checker validates the neutral fixture and records ordered scripts', async () => {
   const result = await checkPort({ gameRoot: fixture, modRoot: null, profile: null, manifest: null });
@@ -15,6 +17,15 @@ test('port checker validates the neutral fixture and records ordered scripts', a
   assert.equal(result.profile.id, 'neutral-mv');
   assert.deepEqual(result.scriptGraph.paths, ['js/rpg_core.js', 'js/main.js']);
   assert.equal(result.contracts.entryScript.status, 'pass');
+});
+
+test('generic package acceptance does not execute game scripts or require neutral markers', async () => {
+  const result = await acceptPackage({ gameRoot: genericFixture });
+  assert.equal(result.status, 'pass');
+  assert.equal(result.executedGameScripts, false);
+  assert.equal(result.runtimeBehavior, 'not-observed');
+  assert.deepEqual(result.evidence.scripts, ['js/rpg_core.js', 'js/main.js']);
+  assert.match(result.evidence.save.roundTrip, /profile-saves\/file1\.generic$/);
 });
 
 test('host acceptance executes media, save, and rollback behavior', async () => {

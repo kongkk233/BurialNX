@@ -19,6 +19,8 @@ if (stored.artifacts?.nro?.sha256 !== actual.artifacts.nro.sha256) throw new Err
 if (stored.artifacts?.runtimeExecutable?.sha256 !== actual.artifacts.runtimeExecutable.sha256) throw new Error('release manifest executable hash is stale');
 if (stored.artifacts?.runtimeExecutable?.expectedSha256 !== actual.artifacts.runtimeExecutable.expectedSha256) throw new Error('release manifest expected runtime hash is stale');
 if (stored.nacp?.title !== actual.nacp.title || stored.nacp?.id !== actual.nacp.id) throw new Error('release manifest NACP summary is stale');
+if (JSON.stringify(stored.packageAcceptance) !== JSON.stringify(actual.packageAcceptance)) throw new Error('release manifest package acceptance is stale');
+if (actual.packageAcceptance.status !== 'pass' || actual.packageAcceptance.executedGameScripts !== false || actual.packageAcceptance.runtimeBehavior !== 'not-observed') throw new Error('generic package acceptance gate did not pass');
 if (JSON.stringify(stored.hostAcceptance) !== JSON.stringify(actual.hostAcceptance)) throw new Error('release manifest host acceptance is stale');
 if (JSON.stringify(stored.overlayAcceptance) !== JSON.stringify(actual.overlayAcceptance)) throw new Error('release manifest overlay acceptance is stale');
 if (actual.overlayAcceptance.status !== 'pass' || actual.overlayAcceptance.evidence?.overlay?.profile !== 'mod-first') throw new Error('mod overlay acceptance gate did not pass');
@@ -32,7 +34,7 @@ if (JSON.stringify(stored.reproducibility) !== JSON.stringify(actual.reproducibi
 if (actual.reproducibility.status !== 'pass' || actual.reproducibility.byteIdentical !== true) throw new Error('release reproducibility gate did not pass');
 if (actual.reproducibility.gitCommit !== actual.gitCommit || actual.reproducibility.gitDirty !== false) throw new Error('reproducibility provenance does not match the clean release commit');
 if (!Array.isArray(actual.reproducibility.builds) || actual.reproducibility.builds.length !== 2 || actual.reproducibility.builds.some((build) => build.sha256 !== actual.artifacts.nro.sha256 || build.bytes !== actual.artifacts.nro.bytes)) throw new Error('reproducibility report does not describe the release NRO twice');
-for (const key of ['profile', 'portCheck', 'acceptHost', 'overlayAcceptance', 'reproducibility', 'npmTest', 'typecheck', 'structural', 'runtime', 'smoke', 'browser', 'native', 'hardware']) {
+for (const key of ['profile', 'packageAcceptance', 'portCheck', 'acceptHost', 'overlayAcceptance', 'reproducibility', 'npmTest', 'typecheck', 'structural', 'runtime', 'smoke', 'browser', 'native', 'hardware']) {
   if (stored.validation?.[key] !== actual.validation?.[key]) throw new Error(`release manifest validation.${key} is stale`);
 }
 inspectNro(await readFile(resolve(project, 'burialnx.nro')));

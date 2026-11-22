@@ -86,6 +86,12 @@ Options are fully translated — Always Dash, BGM/SFX Volume, On/Off — using t
 
 ---
 
+## Package acceptance and neutral validation
+
+`npm run accept:package` is the game-neutral, profile-driven package gate. It validates the profile, entry and ordered script graph, safe asset paths, media policy shape, dynamic save directory/extension round-trip, and session patch rollback without executing target game scripts. Its result explicitly reports `executedGameScripts: false` and `runtimeBehavior: not-observed`.
+
+`npm run accept:host` and `npm run accept:overlay` are separate neutral-fixture deep acceptance checks. They exercise the repository's synthetic neutral runtime contract and are not evidence that a commercial game, native decoder, or Switch hardware has been tested.
+
 ## 🧰 Port Kit commands
 
 ```bash
