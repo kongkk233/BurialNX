@@ -2,6 +2,7 @@ import { S } from './state';
 import { log } from './log';
 import { teardownGame, quitApp, realExit } from './game-lifecycle';
 import { removeBeforeUnloadListener, removeAllSessionListeners } from './error-handling';
+import { currentGamePatches, patchSessionMethod, registerSessionCleanup } from './game-session';
 import { BURIALNX_NRO_PATH, BURIALNX_DEBUG_NRO_PATH } from './forwarder';
 
 export const SLEEP_SAVE_PATH = 'sdmc:/switch/burialnx/.sleep-autosave.rpgsave';
@@ -249,6 +250,7 @@ export function handleWake(gameLive: boolean): void {
 function installSavedAudioReplay(runtime: any): void {
         const Game_Map = runtime.Game_Map;
         const AudioManager = runtime.AudioManager;
+        const patchKey = 'sleep-autoload.audio-replay';
         let replayed = false;
         const replaySaved = () => {
                 if (replayed) return;
@@ -272,15 +274,21 @@ function installSavedAudioReplay(runtime: any): void {
                 } catch (error) { log(`_sleep: audio: replay threw: ${error instanceof Error ? error.message : String(error)}`); }
         };
         if (Game_Map && typeof Game_Map.prototype?.autoplay === 'function' && !Game_Map.prototype.__bnxSleepAudioWrap) {
-                const origAutoplay = Game_Map.prototype.autoplay;
-                Game_Map.prototype.__bnxSleepAudioWrap = true;
-                Game_Map.prototype.autoplay = function () {
-                        const result = origAutoplay.apply(this, arguments as any);
-                        replaySaved();
-                        try { delete Game_Map.prototype.__bnxSleepAudioWrap; Game_Map.prototype.autoplay = origAutoplay; } catch { /* best-effort */ }
-                        return result;
-                };
-                log('_sleep: audio: Game_Map.autoplay hook installed (one-shot saved-BGM replay)');
+                const installed = patchSessionMethod(patchKey, Game_Map.prototype, 'autoplay', (origAutoplay) => {
+                        (Game_Map.prototype as any).__bnxSleepAudioWrap = true;
+                        return function () {
+                                try {
+                                        const result = origAutoplay.apply(this, arguments as any);
+                                        replaySaved();
+                                        return result;
+                                } finally {
+                                        currentGamePatches()?.restore(patchKey);
+                                        try { delete (Game_Map.prototype as any).__bnxSleepAudioWrap; } catch { /* best-effort */ }
+                                }
+                        };
+                });
+                if (installed) log('_sleep: audio: Game_Map.autoplay hook installed (one-shot saved-BGM replay)');
+                else log('_sleep: audio: no active game session — relying on fallback timer only');
         } else {
                 log('_sleep: audio: Game_Map.autoplay unavailable — relying on fallback timer only');
         }
@@ -296,63 +304,78 @@ export function installSleepAutoload(): void {
                 log('_sleep: autoload: SceneManager.goto or Scene_Boot unavailable — cannot install hook');
                 return;
         }
-        S.sleepAutoloadArmed = true;
-        const origGoto = sm.goto;
-        let fired = false;
-        log(`_sleep: autoload hook installed — intercepting first post-Boot scene`);
-        sm.goto = function (sceneClass?: any) {
-                if (!fired) {
-                        const currentIsBoot = sm._scene instanceof runtime.Scene_Boot;
-                        const targetIsBoot = typeof sceneClass === 'function' && sceneClass === runtime.Scene_Boot;
-                        if (currentIsBoot && !targetIsBoot) {
-                                fired = true;
-                                log(`_sleep: autoload: boot→${sceneClass?.name || '?'} goto intercepted — loading hidden save`);
-                                try {
-                                        const dm = runtime.DataManager;
-                                        if (!dm || typeof dm.createGameObjects !== 'function' || typeof dm.extractSaveContents !== 'function') {
-                                                log('_sleep: autoload: DataManager.createGameObjects/extractSaveContents unavailable — falling back to original scene');
-                                                sm.goto = origGoto;
-                                                return origGoto.apply(this, arguments as any);
-                                        }
-                                        const compressed = readSleepSave();
-                                        if (!compressed) {
-                                                log('_sleep: autoload: hidden save file missing — falling back to original scene');
-                                                sm.goto = origGoto;
-                                                return origGoto.apply(this, arguments as any);
-                                        }
-                                        const json = runtime.LZString.decompressFromBase64(compressed);
-                                        if (!json) {
-                                                log('_sleep: autoload: hidden save decompress failed — falling back to original scene');
-                                                sm.goto = origGoto;
-                                                return origGoto.apply(this, arguments as any);
-                                        }
-                                        const contents = runtime.JsonEx.parse(json);
-                                        dm.createGameObjects();
-                                        dm.extractSaveContents(contents);
-                                        log('_sleep: autoload: hidden save loaded (createGameObjects + extractSaveContents)');
-                                        deleteSleepSave();
+        const patchKey = 'sleep-autoload.goto';
+        const installed = patchSessionMethod(patchKey, sm, 'goto', (origGoto) => {
+                let fired = false;
+                const restoreHook = () => currentGamePatches()?.restore(patchKey);
+                log('_sleep: autoload hook installed — intercepting first post-Boot scene');
+                return function (sceneClass?: any) {
+                        if (!fired) {
+                                const currentIsBoot = sm._scene instanceof runtime.Scene_Boot;
+                                const targetIsBoot = typeof sceneClass === 'function' && sceneClass === runtime.Scene_Boot;
+                                if (currentIsBoot && !targetIsBoot) {
+                                        fired = true;
+                                        log(`_sleep: autoload: boot→${sceneClass?.name || '?'} goto intercepted — loading hidden save`);
                                         try {
-                                                const gp = runtime.$gamePlayer;
-                                                if (gp && typeof gp.requestMapReload === 'function') {
-                                                        gp.requestMapReload.call(gp);
-                                                        log('_sleep: autoload: requestMapReload() called');
-                                                } else {
-                                                        log('_sleep: autoload: $gamePlayer.requestMapReload unavailable — map setup may be incomplete');
+                                                const dm = runtime.DataManager;
+                                                if (!dm || typeof dm.createGameObjects !== 'function' || typeof dm.extractSaveContents !== 'function') {
+                                                        log('_sleep: autoload: DataManager.createGameObjects/extractSaveContents unavailable — falling back to original scene');
+                                                        restoreHook();
+                                                        return origGoto.apply(this, arguments as any);
                                                 }
-                                        } catch (e) { log(`_sleep: autoload: requestMapReload threw: ${e instanceof Error ? e.message : String(e)}`); }
-                                        try { installSavedAudioReplay(runtime); }
-                                        catch (e) { log(`_sleep: audio: installSavedAudioReplay threw: ${e instanceof Error ? e.message : String(e)}`); }
-                                        log('_sleep: autoload: goto(Scene_Map)');
-                                        sm.goto = origGoto;
-                                        try { sm._nextScene = null; } catch { /* best-effort */ }
-                                        return sm.goto(runtime.Scene_Map);
-                                } catch (error) {
-                                        log(`_sleep: autoload: load threw: ${error instanceof Error ? error.message : String(error)} — falling back to original scene`);
-                                        sm.goto = origGoto;
-                                        return origGoto.apply(this, arguments as any);
+                                                const compressed = readSleepSave();
+                                                if (!compressed) {
+                                                        log('_sleep: autoload: hidden save file missing — falling back to original scene');
+                                                        restoreHook();
+                                                        return origGoto.apply(this, arguments as any);
+                                                }
+                                                const json = runtime.LZString.decompressFromBase64(compressed);
+                                                if (!json) {
+                                                        log('_sleep: autoload: hidden save decompress failed — falling back to original scene');
+                                                        restoreHook();
+                                                        return origGoto.apply(this, arguments as any);
+                                                }
+                                                const contents = runtime.JsonEx.parse(json);
+                                                dm.createGameObjects();
+                                                dm.extractSaveContents(contents);
+                                                log('_sleep: autoload: hidden save loaded (createGameObjects + extractSaveContents)');
+                                                deleteSleepSave();
+                                                try {
+                                                        const gp = runtime.$gamePlayer;
+                                                        if (gp && typeof gp.requestMapReload === 'function') {
+                                                                gp.requestMapReload.call(gp);
+                                                                log('_sleep: autoload: requestMapReload() called');
+                                                        } else {
+                                                                log('_sleep: autoload: $gamePlayer.requestMapReload unavailable — map setup may be incomplete');
+                                                        }
+                                                } catch (e) { log(`_sleep: autoload: requestMapReload threw: ${e instanceof Error ? e.message : String(e)}`); }
+                                                try { installSavedAudioReplay(runtime); }
+                                                catch (e) { log(`_sleep: audio: installSavedAudioReplay threw: ${e instanceof Error ? e.message : String(e)}`); }
+                                                log('_sleep: autoload: goto(Scene_Map)');
+                                                restoreHook();
+                                                try { sm._nextScene = null; } catch { /* best-effort */ }
+                                                return origGoto.call(this, runtime.Scene_Map);
+                                        } catch (error) {
+                                                log(`_sleep: autoload: load threw: ${error instanceof Error ? error.message : String(error)} — falling back to original scene`);
+                                                restoreHook();
+                                                return origGoto.apply(this, arguments as any);
+                                        }
                                 }
                         }
-                }
-                return origGoto.apply(this, arguments as any);
-        };
+                        return origGoto.apply(this, arguments as any);
+                };
+        });
+        if (!installed) {
+                log('_sleep: autoload: no active game session — cannot install hook');
+                return;
+        }
+        S.sleepAutoloadArmed = true;
+        S.sleepAutoloadPending = false;
+        registerSessionCleanup('sleep-autoload.state', () => () => {
+                S.sleepAutoloadArmed = false;
+                S.sleepAutoloadPending = false;
+                S.sleepAutoloadGameId = null;
+                S.sleepAutoloadBgm = null;
+                S.sleepAutoloadBgs = null;
+        });
 }

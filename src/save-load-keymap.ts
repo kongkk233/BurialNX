@@ -2,6 +2,7 @@ import { DEFAULT_KEYMAP, menuButtonIndicesFor, type KeyMap } from './keymap';
 import { mergedKeymap } from './keymap-editor';
 import type { LibraryEntry } from './game-library';
 import { clearButtonKeyState } from './stick-bindings';
+import { patchSessionMethod, registerSessionCleanup } from './game-session';
 
 declare const __DEBUG__: boolean;
 
@@ -67,9 +68,7 @@ export function installSaveLoadPopHook(): void {
         const runtime = globalThis as any;
         const sm = runtime.SceneManager;
         if (!sm || typeof sm.pop !== 'function' || sm.__bnxPopHooked) return;
-        sm.__bnxPopHooked = true;
-        const origPop = sm.pop;
-        sm.pop = function() {
+        const makeHook = (origPop: any) => function() {
                 if (saveLoadKeymapActive) {
                         try {
                                 const km = mergedKeymap();
@@ -84,6 +83,16 @@ export function installSaveLoadPopHook(): void {
                 }
                 return origPop.apply(this, arguments);
         };
+        const installed = patchSessionMethod('save-load-keymap.scene-manager-pop', sm, 'pop', (origPop) => {
+                (sm as any).__bnxPopHooked = true;
+                return makeHook(origPop);
+        });
+        if (!installed) return;
+        registerSessionCleanup('save-load-keymap.state', () => () => {
+                if (savedGamepadMapper && runtime.Input) runtime.Input.gamepadMapper = savedGamepadMapper;
+                savedGamepadMapper = null;
+                saveLoadKeymapActive = false;
+        });
 }
 
 export function overrideKeymapForSaveLoadScene(

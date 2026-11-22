@@ -13,13 +13,26 @@ export const realExit: ((() => void) | null) =
 
 /** Stop the running game and release audio, frame loop, image buffers, realm globals, then GC. */
 export function teardownGame() {
+        // Keep a reference to the old manager so it can be stubbed after the
+        // session registry restores its original methods. A frame already
+        // dequeued by nx.js may still call a bound method on this object.
+        const retiredManager = S.runtime.SceneManager;
         try { S.host?.dispose(); } catch (e) { log(`Movie teardown: ${String(e)}`); }
+        try { S.mapPrefetch?.dispose(); } catch { /* best-effort */ }
         try { S.runtime.AudioManager?.stopBgm?.(); } catch { /* best-effort */ }
         try { S.runtime.AudioManager?.stopBgs?.(); } catch { /* best-effort */ }
         try { S.runtime.AudioManager?.stopMe?.(); } catch { /* best-effort */ }
         try { S.runtime.AudioManager?.stopSe?.(); } catch { /* best-effort */ }
+        try { S.runtime.ImageManager?._imageCache?.clear?.(); } catch { /* best-effort */ }
+        try { S.runtime.ImageManager?._cache?.clear?.(); } catch { /* best-effort */ }
+        try { S.runtime.ImageManager?.clear?.(); } catch { /* best-effort */ }
+        try { if (Array.isArray(S.runtime.Bitmap?._reuseImages)) S.runtime.Bitmap._reuseImages.length = 0; } catch { /* best-effort */ }
+        S.gameStopped = true;
+        // Restore session-owned patches and delete newly-created game globals
+        // before installing the final no-op manager barrier.
+        try { endGameSession(); } catch { /* best-effort */ }
         try {
-                const manager = S.runtime.SceneManager;
+                const manager = retiredManager;
                 if (manager) {
                         try { manager._stopped = true; } catch { /* best-effort */ }
                         try { manager._scene = null; } catch { /* best-effort */ }
@@ -33,12 +46,6 @@ export function teardownGame() {
                         }
                 }
         } catch { /* best-effort */ }
-        try { S.runtime.ImageManager?._imageCache?.clear?.(); } catch { /* best-effort */ }
-        try { S.runtime.ImageManager?._cache?.clear?.(); } catch { /* best-effort */ }
-        try { S.runtime.ImageManager?.clear?.(); } catch { /* best-effort */ }
-        try { if (Array.isArray(S.runtime.Bitmap?._reuseImages)) S.runtime.Bitmap._reuseImages.length = 0; } catch { /* best-effort */ }
-        S.gameStopped = true;
-        endGameSession();
         resetDiagnostics();
         S.host = undefined;
         S.mapPrefetch = undefined;

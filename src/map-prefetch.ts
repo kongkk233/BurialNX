@@ -1,4 +1,5 @@
 import type { Reader } from './library';
+import { patchSessionMethod } from './game-session';
 
 const MAX_MAPS = 3;
 const MAX_INSPECTED = 10000;
@@ -35,6 +36,15 @@ export class MapPrefetcher {
                 this.nextRead = this.clock() + START_DELAY_MS;
         }
 
+        /** Cancel queued work for a retired game session. In-flight reads finish
+         * harmlessly because their generation no longer matches. */
+        dispose(): void {
+                this.queue = [];
+                this.generation++;
+                this.active = false;
+                this.nextRead = Number.POSITIVE_INFINITY;
+        }
+
         tick(now: number, idle: boolean) {
                 if (!idle || this.active || now < this.nextRead || !this.queue.length) return;
                 const path = this.queue.shift()!;
@@ -53,13 +63,12 @@ export class MapPrefetcher {
 export function installMapPrefetch(runtime: any, prefetch: MapPrefetcher, log: (line: string) => void): boolean {
         const manager = runtime.DataManager;
         if (typeof manager?.onLoad !== 'function') return false;
-        const onLoad = manager.onLoad;
-        manager.onLoad = function(object: unknown) {
+        const makeHook = (onLoad: any) => function(object: unknown) {
                 const result = onLoad.apply(this, arguments);
                 if (object && object === runtime.$dataMap) {
                         try { prefetch.plan(object); } catch (error) { log(`Map prefetch planning failed: ${String(error)}`); }
                 }
                 return result;
         };
-        return true;
+        return patchSessionMethod('map-prefetch.data-manager-onload', manager, 'onLoad', (onLoad) => makeHook(onLoad));
 }

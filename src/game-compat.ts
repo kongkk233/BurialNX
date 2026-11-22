@@ -5,6 +5,7 @@ import { interactionTextY } from './dialogue';
 import { fixIndexedPng } from './indexed-png';
 import { S } from './state';
 import { log } from './log';
+import { registerSessionCleanup } from './game-session';
 
 /** Strip desktop-only plugin payloads and the top-level 'use strict' directive so indirect eval matches a <script> tag. */
 export function prepareGameScript(path: string, source: string): string | null {
@@ -479,10 +480,14 @@ export function installGameCompatibility(runtime: any, root: string, sharedSaves
                 };
         }
         const doc = runtime.document;
-        if (doc && typeof screen?.addEventListener === 'function' && !(screen as any).__burialnxTouchForwarded) {
-                (screen as any).__burialnxTouchForwarded = true;
+        const touchScreen = (globalThis as any).screen ?? runtime.screen;
+        if (doc && typeof touchScreen?.addEventListener === 'function' && !touchScreen.__burialnxTouchForwarded) {
+                const hadMarker = Object.prototype.hasOwnProperty.call(touchScreen, '__burialnxTouchForwarded');
+                const previousMarker = touchScreen.__burialnxTouchForwarded;
+                const handlers: Array<[string, EventListener]> = [];
+                touchScreen.__burialnxTouchForwarded = true;
                 for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel'] as const) {
-                        screen.addEventListener(type, ((e: any) => {
+                        const handler = ((e: any) => {
                                 const target = (globalThis as any).document;
                                 if (!target) return;
                                 if (e?.changedTouches) {
@@ -491,8 +496,19 @@ export function installGameCompatibility(runtime: any, root: string, sharedSaves
                                         }
                                 }
                                 try { target.dispatchEvent(e); } catch { /* best-effort */ }
-                        }) as EventListener);
+                        }) as EventListener;
+                        touchScreen.addEventListener(type, handler);
+                        handlers.push([type, handler]);
                 }
+                registerSessionCleanup('screen.touch-forwarders', () => () => {
+                        for (const [type, handler] of handlers) {
+                                try { touchScreen.removeEventListener?.(type, handler); } catch { /* best-effort */ }
+                        }
+                        try {
+                                if (hadMarker) touchScreen.__burialnxTouchForwarded = previousMarker;
+                                else delete touchScreen.__burialnxTouchForwarded;
+                        } catch { /* best-effort */ }
+                });
         }
         const bitmap = runtime.Bitmap;
         if (bitmap?.prototype?._clearImgInstance) {

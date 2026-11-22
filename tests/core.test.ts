@@ -22,6 +22,7 @@ import { RepeatedPattern } from '../src/repeated-pattern';
 import { ensureGameSaveFolder, hasSteamSaveData, importSteamSaves, installSdSaves, safeGameSaveFolder, safeSaveFolder, steamSaveSources } from '../src/saves';
 import { MESSAGE_RENDER_MODES, messageRenderLabel, cycleMessageRender, type MessageRenderMode } from '../src/partial-render';
 import { S } from '../src/state';
+import { beginGameSession, endGameSession } from '../src/game-session';
 
 test('map prefetch warms only bounded direct transfers and waits for an idle frame', async () => {
         let now = 0;
@@ -63,23 +64,28 @@ test('map prefetch cancels stale queues and observes only actual map loads', asy
         const prefetch = new MapPrefetcher(reader, (line) => failures.push(line), () => now);
         const map = (ids: number[]) => ({ events: [{ pages: [{ list: ids.map((id) => ({ code: 201, parameters: [0, id] })) }] }] });
         const runtime: any = { $dataMap: map([1, 2]), DataManager: { calls: 0, onLoad() { this.calls++; return 'original'; } } };
-        assert.equal(installMapPrefetch(runtime, prefetch, () => {}), true);
-        assert.equal(runtime.DataManager.onLoad({}), 'original');
-        prefetch.tick(2000, true);
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        assert.deepEqual(reads, []);
-        runtime.DataManager.onLoad(runtime.$dataMap);
-        now = 1000; prefetch.tick(now, true);
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        runtime.$dataMap = map([7]); runtime.DataManager.onLoad(runtime.$dataMap);
-        release(new ArrayBuffer(1));
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        prefetch.tick(1999, true); now = 2000; prefetch.tick(now, true);
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        assert.deepEqual(reads, ['data/Map001.json', 'data/Map007.json']);
-        assert.equal(runtime.DataManager.calls, 3);
-        assert.ok(failures[0].includes('disk error'));
-        assert.equal(installMapPrefetch({}, prefetch, () => {}), false);
+        beginGameSession();
+        try {
+                assert.equal(installMapPrefetch(runtime, prefetch, () => {}), true);
+                assert.equal(runtime.DataManager.onLoad({}), 'original');
+                prefetch.tick(2000, true);
+                await new Promise<void>((resolve) => setImmediate(resolve));
+                assert.deepEqual(reads, []);
+                runtime.DataManager.onLoad(runtime.$dataMap);
+                now = 1000; prefetch.tick(now, true);
+                await new Promise<void>((resolve) => setImmediate(resolve));
+                runtime.$dataMap = map([7]); runtime.DataManager.onLoad(runtime.$dataMap);
+                release(new ArrayBuffer(1));
+                await new Promise<void>((resolve) => setImmediate(resolve));
+                prefetch.tick(1999, true); now = 2000; prefetch.tick(now, true);
+                await new Promise<void>((resolve) => setImmediate(resolve));
+                assert.deepEqual(reads, ['data/Map001.json', 'data/Map007.json']);
+                assert.equal(runtime.DataManager.calls, 3);
+                assert.ok(failures[0].includes('disk error'));
+                assert.equal(installMapPrefetch({}, prefetch, () => {}), false);
+        } finally {
+                endGameSession();
+        }
 });
 
 test('map warm-up uses the existing mod-aware cache without a second disk read', async () => {
@@ -1187,7 +1193,7 @@ test('wrapSystemTerms wraps $dataSystem.terms.commands that match sysMenus keys'
         };
         const runtime: any = {
                 $dataSystem: {
-                        gameTitle: 'The Coffin of Andy and Leyley',
+                        gameTitle: 'Sample RPG Maker MV Game',
                         terms: {
                                 commands: ['Fight', 'Escape', 'Attack', 'Guard', 'Item', 'Skill', 'Equip', 'Status', 'Formation', 'Save', 'Game End', 'Options', 'Weapon', 'Armor', 'Key Item', 'Equip', 'Optimize', 'Clear', 'New Game', 'Continue', null, 'To Title', 'Cancel', null, 'Buy', 'Sell'],
                                 basic: ['Level', 'Lv', 'HP', 'HP'],
@@ -1214,7 +1220,7 @@ test('wrapSystemTerms wraps $dataSystem.gameTitle when it matches a sysLabel key
                 sysLabel: { 'Game': 'Гроб для Энди и Лейли', 'Item': 'Предметы', 'File': 'Файл', 'Save': 'Какой файл перезаписать?', 'Load': 'Какой файл загрузить?' },
         };
         const runtime: any = {
-                $dataSystem: { gameTitle: 'The Coffin of Andy and Leyley', terms: { commands: [], messages: { file: 'File', saveMessage: 'Save to which file?', loadMessage: 'Load which file?' } } },
+                $dataSystem: { gameTitle: 'Sample RPG Maker MV Game', terms: { commands: [], messages: { file: 'File', saveMessage: 'Save to which file?', loadMessage: 'Load which file?' } } },
         };
         wrapSystemTerms(runtime, language);
         // gameTitle maps to sysLabel['Game'] (not an exact-match key) → wrapped in (sysLabel)[Game]
@@ -1846,6 +1852,7 @@ test('installSaveLoadPopHook: wraps SceneManager.pop and clears the override syn
         const savedSceneSave = previousGlobal.Scene_Save;
         const savedSceneMessage = previousGlobal.Scene_Message;
         const savedGameMessage = previousGlobal.$gameMessage;
+        beginGameSession();
         Object.assign(previousGlobal, { SceneManager: sm, Input: input, Scene_Save: rt.Scene_Save, Scene_Message: rt.Scene_Message, $gameMessage: rt.$gameMessage });
         try {
                 // Simulate the save/load override being active (as if
@@ -1871,10 +1878,9 @@ test('installSaveLoadPopHook: wraps SceneManager.pop and clears the override syn
                 installSaveLoadPopHook();
                 assert.equal(sm.__bnxPopHooked, true, 're-install is a no-op');
         } finally {
-                // Restore the original pop (so other tests aren't affected) by
-                // clearing the hook flag + restoring. Since we can't un-wrap,
-                // just restore the globals; the wrapped pop calls the original
-                // (which is a no-op recorder) — harmless.
+                // Restore the session-owned pop hook before returning the
+                // globals to the surrounding test realm.
+                endGameSession();
                 Object.assign(previousGlobal, { SceneManager: savedSceneManager, Input: savedInput, Scene_Save: savedSceneSave, Scene_Message: savedSceneMessage, $gameMessage: savedGameMessage });
                 (navigator as any).getGamepads = previousGetGamepads;
         }
